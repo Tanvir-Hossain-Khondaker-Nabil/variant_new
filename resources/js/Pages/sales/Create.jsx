@@ -258,7 +258,7 @@ export default function AddSale({
 
     const calculateDiscountAmount = useCallback(() => {
         const subtotal = calculateTotalSubTotal();
-        
+
         if (discountType === "flat_discount") {
             return Number(flatDiscount) || 0;
         } else {
@@ -414,7 +414,7 @@ export default function AddSale({
     // ========== BATCH SELECTION - ADD TO CART ==========
     const handleBatchSelect = (batch) => {
         setSelectedBatch(batch);
-        
+
         // Get the first stock from this batch
         const stock = batch.stocks[0];
         if (!stock) {
@@ -427,7 +427,7 @@ export default function AddSale({
 
         // Add to cart with this specific batch
         addToCart(product, variant, batch, stock);
-        
+
         setShowBatchModal(false);
     };
 
@@ -556,16 +556,138 @@ export default function AddSale({
             if (!code) return;
 
             setScanError("");
+            const normalizedCode = code.toLowerCase();
 
-            const product = allProducts.find(p => p.product_no === code || p.code === code);
+            // 1) exact stock-level match first
+            const matchedStock = productstocks.find((stock) => {
+                const stockBarcode = String(stock.barcode || "").trim().toLowerCase();
+                const stockCode = String(stock.code || "").trim().toLowerCase();
+                const batchNo = String(stock.batch_no || "").trim().toLowerCase();
+                const variantSku = String(stock.variant?.sku || "").trim().toLowerCase();
+                const productNo = String(stock.product?.product_no || "").trim().toLowerCase();
+                const productCode = String(stock.product?.code || "").trim().toLowerCase();
+
+                return (
+                    stockBarcode === normalizedCode ||
+                    stockCode === normalizedCode ||
+                    variantSku === normalizedCode ||
+                    productNo === normalizedCode ||
+                    productCode === normalizedCode ||
+                    batchNo === normalizedCode
+                );
+            });
+
+            if (matchedStock?.product && matchedStock?.variant) {
+                const product = allProducts.find(
+                    (p) => String(p.id) === String(matchedStock.product.id)
+                );
+
+                if (product) {
+                    const variantData = product.variants.get(matchedStock.variant.id);
+
+                    if (variantData) {
+                        const variant = {
+                            id: matchedStock.variant.id,
+                            sku: matchedStock.variant.sku,
+                            attributes: Object.entries(
+                                matchedStock.variant.attribute_values || {}
+                            ).map(([key, value]) => ({ key, value })),
+                            totalStock: variantData.totalQuantity,
+                            batches: Array.from(variantData.batches.values()).map((batchData) => ({
+                                batch_no: batchData.batch_no,
+                                totalQuantity: batchData.totalQuantity,
+                                sale_price: batchData.sale_price,
+                                purchase_price: batchData.purchase_price,
+                                stocks: batchData.stocks,
+                                unit:
+                                    batchData.stocks[0]?.unit ||
+                                    product.default_unit ||
+                                    "piece",
+                            })),
+                            unit:
+                                variantData.stocks[0]?.unit ||
+                                product.default_unit ||
+                                "piece",
+                        };
+
+                        const exactBatch =
+                            variant.batches.find(
+                                (b) =>
+                                    String(b.batch_no || "").trim().toLowerCase() === normalizedCode
+                            ) ||
+                            variant.batches.find((b) =>
+                                b.stocks.some(
+                                    (s) =>
+                                        String(s.id) === String(matchedStock.id) ||
+                                        String(s.barcode || "").trim().toLowerCase() === normalizedCode
+                                )
+                            ) ||
+                            variant.batches[0];
+
+                        if (exactBatch) {
+                            addToCart(product, variant, exactBatch, exactBatch.stocks[0]);
+                            setProductSearch("");
+                            barcodeRefNew.current = "";
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // 2) fallback product-level match
+            const product = allProducts.find((p) => {
+                const productNo = String(p.product_no || "").trim().toLowerCase();
+                const productCode = String(p.code || "").trim().toLowerCase();
+                return productNo === normalizedCode || productCode === normalizedCode;
+            });
+
             if (product) {
-                handleProductSelect(product);
+                const variantsList = Array.from(product.variants.values()).map((variantData) => ({
+                    id: variantData.variant.id,
+                    sku: variantData.variant.sku,
+                    attributes: Object.entries(
+                        variantData.variant.attribute_values || {}
+                    ).map(([key, value]) => ({ key, value })),
+                    totalStock: variantData.totalQuantity,
+                    batches: Array.from(variantData.batches.values()).map((batchData) => ({
+                        batch_no: batchData.batch_no,
+                        totalQuantity: batchData.totalQuantity,
+                        sale_price: batchData.sale_price,
+                        purchase_price: batchData.purchase_price,
+                        stocks: batchData.stocks,
+                        unit:
+                            batchData.stocks[0]?.unit ||
+                            product.default_unit ||
+                            "piece",
+                    })),
+                    unit:
+                        variantData.stocks[0]?.unit ||
+                        product.default_unit ||
+                        "piece",
+                }));
+
+                // auto add if only one variant and one batch
+                if (variantsList.length === 1 && variantsList[0].batches.length === 1) {
+                    const onlyVariant = variantsList[0];
+                    const onlyBatch = onlyVariant.batches[0];
+                    addToCart(product, onlyVariant, onlyBatch, onlyBatch.stocks[0]);
+                    setProductSearch("");
+                    barcodeRefNew.current = "";
+                    return;
+                }
+
+                // otherwise open modal
+                setSelectedProduct(product);
+                setProductVariants(variantsList);
+                setShowVariantModal(true);
+                setShowProductDropdown(false);
+                setProductSearch("");
                 return;
             }
 
             setScanError(`No product found for: ${code}`);
         },
-        [allProducts]
+        [allProducts, productstocks, selectedItems]
     );
 
     const SCAN_TIMEOUT = 100;
@@ -583,15 +705,20 @@ export default function AddSale({
                 tag === "SELECT" ||
                 target?.isContentEditable;
 
-            if (isTypingField) return;
+            // only allow scanner on the barcode input or outside inputs
+            const isBarcodeInputFocused = target === barcodeRef.current;
+            if (isTypingField && !isBarcodeInputFocused) return;
+
             if (e.ctrlKey || e.altKey || e.metaKey) return;
 
             const now = Date.now();
 
             if (e.key === "Enter") {
-                if (barcodeRefNew.current.length > 0) {
+                const scannedValue = barcodeRefNew.current.trim() || productSearch.trim();
+
+                if (scannedValue) {
                     e.preventDefault();
-                    handleBarcodeScan(barcodeRefNew.current);
+                    handleBarcodeScan(scannedValue);
                     barcodeRefNew.current = "";
                 }
                 return;
@@ -609,7 +736,7 @@ export default function AddSale({
 
         window.addEventListener("keydown", handleKeydown, { passive: false });
         return () => window.removeEventListener("keydown", handleKeydown);
-    }, [handleBarcodeScan]);
+    }, [handleBarcodeScan, productSearch]);
 
     // ========== UNIT CHANGE HANDLER ==========
     const handleUnitChange = (itemKey, newUnit) => {
@@ -1433,12 +1560,10 @@ export default function AddSale({
                                             setProductSearch(e.target.value);
                                         }}
                                         onFocus={() => {
-                                            // When focusing, show dropdown with all products
                                             setShowProductDropdown(true);
                                             setFilteredProducts(allProducts);
                                         }}
                                         onBlur={() => {
-                                            // Small delay to allow click events on dropdown items
                                             setTimeout(() => {
                                                 setShowProductDropdown(false);
                                             }, 200);
@@ -1722,11 +1847,11 @@ export default function AddSale({
                                 <Layers size={18} className="text-primary" />
                                 Select Variant - {selectedProduct.name}
                             </h3>
-                            <button 
+                            <button
                                 onClick={() => {
                                     setShowVariantModal(false);
                                     setSelectedProduct(null);
-                                }} 
+                                }}
                                 className="btn btn-sm btn-circle btn-ghost"
                             >
                                 ✕
@@ -1795,11 +1920,11 @@ export default function AddSale({
                                 <Box size={18} className="text-primary" />
                                 Select Batch - {selectedProduct?.name}
                             </h3>
-                            <button 
+                            <button
                                 onClick={() => {
                                     setShowBatchModal(false);
                                     setSelectedVariant(null);
-                                }} 
+                                }}
                                 className="btn btn-sm btn-circle btn-ghost"
                             >
                                 ✕
@@ -1976,7 +2101,7 @@ const SelectedItemCard = ({
                         <strong>Variant:</strong> {item.variant_attribute}
                     </p>
                     <p className="text-sm text-gray-600">
-                        <strong>Batch:</strong> {item.batch_no || 'N/A'} 
+                        <strong>Batch:</strong> {item.batch_no || 'N/A'}
                         <span className="text-gray-600"> | <strong>Total Stock:</strong> {item?.stockQuantity || 0}</span>
                     </p>
                 </div>

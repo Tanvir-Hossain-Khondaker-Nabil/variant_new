@@ -21,8 +21,9 @@ import {
     Square,
     MoreVertical,
 } from "lucide-react";
-import React, { Fragment, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../hooks/useTranslation";
+import JsBarcode from "jsbarcode";
 
 export default function Product({ product, filters }) {
     const { auth } = usePage().props;
@@ -34,21 +35,68 @@ export default function Product({ product, filters }) {
     // store selected barcode rows (barcode is unique key)
     const [selectedBarcodeMap, setSelectedBarcodeMap] = useState(() => new Map());
 
+    /**
+     * ✅ KEEP FIRST JSX UI + ADD BOTH PRINT TYPES:
+     * 1) Sheet Grid Print (old first jsx)  -> uses image (tec-it)
+     * 2) RP400 Exact Label/Slip (second jsx)-> uses SVG (JsBarcode) + @page size
+     */
     const [barcodeConfig, setBarcodeConfig] = useState({
-        showProductName: true,
-        showBatchNo: true,
-        showSalePrice: true,
+        // ✅ WHICH PRINT TYPE
+        printType: "sheet", // "sheet" | "rp400"
 
-        align: "left", // left | right
+        // ========= SHEET (first jsx) =========
+        sheet: {
+            showProductName: true,
+            showBatchNo: true,
+            showSalePrice: false,
+            showVariantName: false,
 
-        labelWidthMm: 36,
-        labelHeightMm: 30,
-        gapMm: 2,
+            align: "left", // left | right
 
-        copiesMode: "one", // one | byQty | fixed
-        fixedCopies: 1,
+            labelWidthMm: 38,
+            labelHeightMm: 25,
+            gapMm: 2,
 
-        barcodeImgHeightPx: 50,
+            copiesMode: "one", // one | byQty | fixed
+            fixedCopies: 1,
+
+            barcodeImgHeightPx: 50,
+        },
+
+        // ========= RP400 (second jsx) =========
+        rp400: {
+            // content
+            showProductName: true,
+            showBatchNo: true,
+            showSalePrice: false,
+            showVariantName: false,
+            showTextUnderBarcode: false,
+
+            // alignment + orientation
+            align: "center", // left | center | right
+            orientation: "portrait", // portrait | landscape
+
+            // label/slip sizes
+            // (You can change these in modal)
+            labelWidthMm: 38,
+            labelHeightMm: 25,
+            slipWidthMm: 38,
+            slipHeightMm: 25,
+
+            paddingMm: 1,
+
+            // barcode sizing
+            barcodeHeightMm: 33,
+            barWidthPx: 0, // 0 = auto
+
+            // copies
+            copiesMode: "one", // one | byQty | fixed
+            fixedCopies: 1,
+
+            // print mode inside RP400
+            printMode: "label", // label | slip
+            showSlipTotals: false,
+        },
     });
 
     const safeProducts = product?.data || [];
@@ -210,12 +258,6 @@ export default function Product({ product, filters }) {
         });
     };
 
-    // Generate barcode image URL
-    const generateBarcodeImage = (barcode) => {
-        const code = String(barcode || "").trim();
-        return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(code)}&code=Code128&dpi=96`;
-    };
-
     // =========================
     // ✅ BULK BARCODE SELECT
     // =========================
@@ -242,15 +284,62 @@ export default function Product({ product, filters }) {
 
     const closeBulkModal = () => setShowBulkBarcodeModal(false);
 
-    const updateBarcodeConfig = (key, value) =>
-        setBarcodeConfig((prev) => ({
-            ...prev,
-            [key]: value,
-        }));
+    const updateBarcodeConfig = (pathKey, value) => {
+        // pathKey examples:
+        // "printType"
+        // "sheet.labelWidthMm"
+        // "rp400.orientation"
+        const numberKeys = new Set([
+            "sheet.labelWidthMm",
+            "sheet.labelHeightMm",
+            "sheet.gapMm",
+            "sheet.fixedCopies",
+            "sheet.barcodeImgHeightPx",
 
-    // Build labels from selectedBarcodeMap + config copies
-    const buildBulkLabels = () => {
-        const { copiesMode, fixedCopies } = barcodeConfig;
+            "rp400.labelWidthMm",
+            "rp400.labelHeightMm",
+            "rp400.slipWidthMm",
+            "rp400.slipHeightMm",
+            "rp400.paddingMm",
+            "rp400.barcodeHeightMm",
+            "rp400.barWidthPx",
+            "rp400.fixedCopies",
+        ]);
+
+        setBarcodeConfig((prev) => {
+            const next = { ...prev };
+
+            if (pathKey === "printType") {
+                next.printType = value;
+                return next;
+            }
+
+            const [root, key] = pathKey.split(".");
+            if (!root || !key) return prev;
+
+            next[root] = { ...next[root], [key]: numberKeys.has(pathKey) ? Number(value) : value };
+            return next;
+        });
+    };
+
+    const escapeHtml = (s) =>
+        String(s || "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+
+    // =========================
+    // ✅ SHEET MODE (FIRST JSX) - tec-it image barcode
+    // =========================
+    const generateBarcodeImage = (barcode) => {
+        const code = String(barcode || "").trim();
+        return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(code)}&code=Code128&dpi=96`;
+    };
+
+    const buildSheetLabels = () => {
+        const { copiesMode, fixedCopies, showProductName, showBatchNo, showSalePrice } = barcodeConfig.sheet;
 
         const resolveCopies = (qty) => {
             if (copiesMode === "fixed") return Math.max(1, Number(fixedCopies || 1));
@@ -265,19 +354,18 @@ export default function Product({ product, filters }) {
                 labels.push({
                     codeValue: row.barcode,
                     imgSrc: generateBarcodeImage(row.barcode),
-                    productName: row.productName || "",
+                    productName: showProductName ? row.productName || "" : "",
                     variantName: row.variantName || "",
-                    batchNo: row.batch_no || "",
-                    salePrice: row.sale_price || "",
+                    batchNo: showBatchNo ? row.batch_no || "" : "",
+                    salePrice: showSalePrice ? row.sale_price || "" : "",
                 });
             }
         }
         return labels;
     };
 
-    // ✅ Professional bulk print
-    const handleBulkBarcodePrint = () => {
-        const labels = buildBulkLabels();
+    const handleSheetBarcodePrint = () => {
+        const labels = buildSheetLabels();
         if (!labels.length) return alert("No barcodes found to print.");
 
         const {
@@ -289,118 +377,106 @@ export default function Product({ product, filters }) {
             labelHeightMm,
             gapMm,
             barcodeImgHeightPx,
-        } = barcodeConfig;
+        } = barcodeConfig.sheet;
 
         const printWindow = window.open("", "_blank");
         if (!printWindow) return alert("Please allow popups to print barcodes.");
 
         const css = `
-      @page { margin: 6mm; }
-      @media print { .no-print { display:none !important; } body { padding:0; } }
+          @page { margin: 6mm; }
+          @media print { .no-print { display:none !important; } body { padding:0; } }
 
-      * { box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      body {
-        margin:0;
-        padding:10px;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-        background:#fff;
-        color:#0f172a;
-      }
+          * { box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body {
+            margin:0;
+            padding:10px;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            background:#fff;
+            color:#0f172a;
+          }
 
-      .sheet { width:100%; }
+          .sheet { width:100%; }
 
-      .grid{
-        width: 100%;
-        display: grid;
-        grid-auto-flow: row;
-        grid-template-columns: repeat(auto-fit, ${Number(labelWidthMm)}mm);
-        gap:${Number(gapMm)}mm;
-        justify-content:${align === "right" ? "end" : "start"};
-        align-content:start;
-      }
+          .grid{
+            width: 100%;
+            display: grid;
+            grid-auto-flow: row;
+            grid-template-columns: repeat(auto-fit, ${Number(labelWidthMm)}mm);
+            gap:${Number(gapMm)}mm;
+            justify-content:${align === "right" ? "end" : "start"};
+            align-content:start;
+          }
 
-      .label{
-        width:${Number(labelWidthMm)}mm;
-        height:${Number(labelHeightMm)}mm;
-        padding:4px 2px;
-        border-radius:8px;
-        background:#fff;
-        border:1px solid #e5e7eb;
-        display:flex;
-        flex-direction:column;
-        overflow:hidden;
-        break-inside:avoid;
-        page-break-inside:avoid;
-        position:relative;
-      }
+          .label{
+            width:${Number(labelWidthMm)}mm;
+            height:${Number(labelHeightMm)}mm;
+            padding:4px 2px;
+            border-radius:8px;
+            background:#fff;
+            border:1px solid #e5e7eb;
+            display:flex;
+            flex-direction:column;
+            overflow:hidden;
+            break-inside:avoid;
+            page-break-inside:avoid;
+            position:relative;
+          }
 
-      .barcodeArea {
-        display:flex;
-        flex-direction:column;
-        align-items:center;
-        justify-content:center;
-        gap:4px;
-        height:100%;
-        width:100%;
-        text-align:center;
-      }
+          .barcodeArea {
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            gap:4px;
+            height:100%;
+            width:100%;
+            text-align:center;
+          }
 
-      .name {
-        width:100%;
-        font-weight:900;
-        font-size:11px;
-        line-height:1.15;
-        color:#0f172a;
-        display:-webkit-box;
-        -webkit-line-clamp:2;
-        -webkit-box-orient:vertical;
-        overflow:hidden;
-      }
+          .name {
+            width:100%;
+            font-weight:900;
+            font-size:11px;
+            color:#0f172a;
+            display:-webkit-box;
+            -webkit-line-clamp:2;
+            -webkit-box-orient:vertical;
+          }
 
-      .variant {
-        width:100%;
-        font-weight:800;
-        font-size:9px;
-        color:#64748b;
-        display:-webkit-box;
-        -webkit-line-clamp:1;
-        -webkit-box-orient:vertical;
-        overflow:hidden;
-      }
+          .variant {
+            width:100%;
+            font-weight:800;
+            font-size:9px;
+            color:#64748b;
+            display:-webkit-box;
+            -webkit-line-clamp:1;
+            -webkit-box-orient:vertical;
+            overflow:hidden;
+          }
 
-      .barcodeImg{
-        height:${Number(barcodeImgHeightPx)}px;
-        width:auto;
-        max-width:92%;
-        object-fit:contain;
-        display:block;
-        margin:0 auto;
-      }
+          .barcodeImg{
+            height:${Number(barcodeImgHeightPx)}px;
+            width:auto;
+            max-width:92%;
+            object-fit:contain;
+            display:block;
+            margin:0 auto;
+          }
 
-      .batch, .price {
-        width:100%;
-        font-size:10px;
-        font-weight:900;
-        line-height:1.1;
-        white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
-      }
-      .batch { color:#475569; font-weight:800; font-size:9px; }
-      .price { color:#0f172a; }
+          .batch, .price {
+            width:100%;
+            font-size:10px;
+            font-weight:900;
+            white-space:nowrap;
+            text-overflow:ellipsis;
+          }
+          .batch { color:#475569; font-weight:800; font-size:9px; }
+          .price { color:#0f172a; }
 
-      .no-print { text-align:center; margin-top:14px; color:#64748b; font-weight:900; }
-      .btn { border:none; padding:8px 14px; border-radius:12px; font-weight:900; cursor:pointer; margin:0 6px; background:#111827; color:#fff; }
-      .btn.ghost { background:#f1f5f9; color:#111827; }
-    `;
-
-        const escapeHtml = (s) =>
-            String(s || "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
+          .no-print { text-align:center; margin-top:14px; color:#64748b; font-weight:900; }
+          .btn { border:none; padding:8px 14px; border-radius:12px; font-weight:900; cursor:pointer; margin:0 6px; background:#111827; color:#fff; }
+          .btn.ghost { background:#f1f5f9; color:#111827; }
+        `;
 
         const labelsHtml = labels
             .map((l) => {
@@ -416,67 +492,426 @@ export default function Product({ product, filters }) {
                     : "";
 
                 return `
-          <div class="label">
-            <div class="barcodeArea">
-              ${nameHtml}
-              ${variantHtml}
-              <img class="barcodeImg" src="${escapeHtml(l.imgSrc)}" alt="Barcode ${escapeHtml(l.codeValue)}" />
-              ${batchHtml}
-              ${priceHtml}
-            </div>
-          </div>
-        `;
+                  <div class="label">
+                    <div class="barcodeArea">
+                      ${nameHtml}
+                      ${variantHtml}
+                      <img class="barcodeImg" src="${escapeHtml(l.imgSrc)}" alt="Barcode ${escapeHtml(l.codeValue)}" />
+                      ${batchHtml}
+                      ${priceHtml}
+                    </div>
+                  </div>
+                `;
             })
             .join("");
 
         const html = `
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Barcode Labels</title>
-        <style>${css}</style>
-      </head>
-      <body>
-        <div class="sheet"><div class="grid">${labelsHtml}</div></div>
+          <!doctype html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Barcode Labels</title>
+            <style>${css}</style>
+          </head>
+          <body>
+            <div class="sheet"><div class="grid">${labelsHtml}</div></div>
 
-        <div class="no-print">
-          Total: ${labels.length} labels
-          <div style="margin-top:10px;">
-            <button class="btn" onclick="window.print()">Print</button>
-            <button class="btn ghost" onclick="window.close()">Close</button>
-          </div>
-        </div>
+            <div class="no-print">
+              Total: ${labels.length} labels
+              <div style="margin-top:10px;">
+                <button class="btn" onclick="window.print()">Print</button>
+                <button class="btn ghost" onclick="window.close()">Close</button>
+              </div>
+            </div>
 
-        <script>
-          (function(){
-            var imgs = Array.from(document.images || []);
-            if(!imgs.length){ setTimeout(function(){ window.print(); }, 250); return; }
+            <script>
+              (function(){
+                var imgs = Array.from(document.images || []);
+                if(!imgs.length){ setTimeout(function(){ window.print(); }, 250); return; }
 
-            var done = 0;
-            function finish(){
-              done++;
-              if(done >= imgs.length) setTimeout(function(){ window.print(); }, 250);
-            }
+                var done = 0;
+                function finish(){
+                  done++;
+                  if(done >= imgs.length) setTimeout(function(){ window.print(); }, 250);
+                }
 
-            imgs.forEach(function(img){
-              if(img.complete) return finish();
-              img.onload = finish;
-              img.onerror = finish;
-            });
+                imgs.forEach(function(img){
+                  if(img.complete) return finish();
+                  img.onload = finish;
+                  img.onerror = finish;
+                });
 
-            setTimeout(function(){ window.print(); }, 5000);
-          })();
-        </script>
-      </body>
-      </html>
-    `;
+                setTimeout(function(){ window.print(); }, 5000);
+              })();
+            </script>
+          </body>
+          </html>
+        `;
 
         printWindow.document.open();
         printWindow.document.write(html);
         printWindow.document.close();
 
         closeBulkModal();
+    };
+
+    // =========================
+    // ✅ RP400 MODE (SECOND JSX) - SVG + exact @page size
+    // =========================
+    const autoBarWidth = (code) => {
+        const len = String(code || "").length;
+        if (len <= 6) return 2.3;
+        if (len <= 10) return 2.1;
+        if (len <= 14) return 1.9;
+        if (len <= 18) return 1.7;
+        return 1.5;
+    };
+
+    const generateBarcodeSvgString = useCallback(
+        (codeValue) => {
+            const code = String(codeValue || "").trim();
+            if (!code) return "";
+
+            try {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+
+                const finalBarWidth =
+                    Number(barcodeConfig.rp400.barWidthPx || 0) > 0
+                        ? Number(barcodeConfig.rp400.barWidthPx)
+                        : autoBarWidth(code);
+
+                JsBarcode(svg, code, {
+                    format: "CODE128",
+                    displayValue: false,
+                    margin: 0,
+                    height: 90,
+                    width: finalBarWidth,
+                    lineColor: "#000",
+                    background: "#fff",
+                });
+
+                const wAttr = svg.getAttribute("width");
+                const hAttr = svg.getAttribute("height");
+                const w = Number(wAttr || 0);
+                const h = Number(hAttr || 0);
+                if (w > 0 && h > 0) {
+                    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+                }
+
+                svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+                svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+                svg.removeAttribute("width");
+                svg.removeAttribute("height");
+
+                return svg.outerHTML;
+            } catch (e) {
+                console.error("Barcode SVG generate failed:", e);
+                return "";
+            }
+        },
+        [barcodeConfig.rp400.barWidthPx]
+    );
+
+    const buildRp400Labels = useCallback(() => {
+        const { copiesMode, fixedCopies } = barcodeConfig.rp400;
+
+        const resolveCopies = (qty) => {
+            if (copiesMode === "fixed") return Math.max(1, Number(fixedCopies || 1));
+            if (copiesMode === "byQty") return Math.max(1, Math.round(Number(qty || 1)));
+            return 1;
+        };
+
+        const labels = [];
+        for (const row of selectedBarcodeMap.values()) {
+            const copies = resolveCopies(row?.quantity || 1);
+
+            const svgHtml = generateBarcodeSvgString(row?.barcode);
+            if (!svgHtml) continue;
+
+            for (let i = 0; i < copies; i++) {
+                labels.push({
+                    codeValue: String(row.barcode || "").trim(),
+                    svgHtml,
+                    productName: row.productName || "",
+                    variantName: row.variantName || "",
+                    batchNo: row.batch_no || "",
+                    salePrice: row.sale_price || "",
+                    qty: row.quantity || 0,
+                });
+            }
+        }
+
+        return labels;
+    }, [barcodeConfig.rp400, selectedBarcodeMap, generateBarcodeSvgString]);
+
+    const handleRp400BarcodePrint = () => {
+        const labels = buildRp400Labels();
+        if (!labels.length) return alert("No barcodes found to print.");
+
+        const cfg = barcodeConfig.rp400;
+
+        const {
+            showProductName,
+            showVariantName,
+            showBatchNo,
+            showSalePrice,
+            showTextUnderBarcode,
+            align,
+            orientation,
+            labelWidthMm,
+            labelHeightMm,
+            paddingMm,
+            barcodeHeightMm,
+            slipWidthMm,
+            slipHeightMm,
+            printMode,
+            showSlipTotals,
+        } = cfg;
+
+        const baseW = printMode === "slip" ? Number(slipWidthMm || 72) : Number(labelWidthMm || 72);
+        const baseH = printMode === "slip" ? Number(slipHeightMm || 28) : Number(labelHeightMm || 47);
+
+        const pad = Number(paddingMm || 1.5);
+        const barcodeH = Number(barcodeHeightMm || 18);
+
+        const pageW = orientation === "landscape" ? baseH : baseW;
+        const pageH = orientation === "landscape" ? baseW : baseH;
+
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) return alert("Please allow popups to print barcodes.");
+
+        const css = `
+            @page { size: ${pageW}mm ${pageH}mm; margin: 0mm; }
+
+            html, body {
+                margin: 0;
+                padding: 0;
+                background: #fff;
+                width: ${pageW}mm;
+                height: ${pageH}mm;
+                overflow: hidden;
+            }
+
+            * {
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            }
+
+            .page {
+                width: ${pageW}mm;
+                height: ${pageH}mm;
+                page-break-after: always;
+                overflow: hidden;
+                position: relative;
+            }
+
+            .rotFix {
+                width: ${baseW}mm;
+                height: ${baseH}mm;
+                position: absolute;
+                left: 0;
+                top: 0;
+                transform-origin: top left;
+            }
+            .rotFix.landscape {
+                transform: rotate(90deg) translateY(-${baseH}mm);
+            }
+
+            .label {
+                width: ${baseW}mm;
+                height: ${baseH}mm;
+                padding: ${pad}mm;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+            }
+
+            .wrap {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: ${align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center"};
+                text-align: ${align};
+            }
+
+            .name {
+                width: 100%;
+                font-size: 9pt;
+                font-weight: 900;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .variant {
+                width: 100%;
+                font-size: ${printMode === "slip" ? "14pt" : "15pt"};
+                font-weight: 800;
+                line-height: 1.1;
+                margin-bottom: 0.8mm;
+                color: #111;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .barcodeBox {
+                width: 100%;
+                height: 9pt
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .barcodeBox svg {
+                height: 100%;
+                width: auto;
+                max-width: 100%;
+            }
+
+            .textUnder {
+                font-size: ${printMode === "slip" ? "7pt" : "8pt"};
+                font-weight: 900;
+                margin-top: 0.4mm;
+                letter-spacing: 0.2px;
+            }
+
+            .batch {
+                width: 100%;
+                font-size: 9pt;
+                font-weight: 800;
+                margin-top: 0.8mm;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                color: #111;
+            }
+
+            .price {
+                width: 100%;
+                font-size: 9pt;
+                font-weight: 900;
+                margin-top: 0.6mm;
+            }
+
+            .slipLine {
+                width: 100%;
+                display:flex;
+                justify-content: space-between;
+                font-size: 8pt;
+                font-weight: 900;
+                margin-top: 0.7mm;
+                border-top: 1px dashed #ddd;
+                padding-top: 0.7mm;
+            }
+
+            @media screen {
+                .no-print {
+                    padding: 14px;
+                    border-top: 1px solid #ddd;
+                    text-align: center;
+                }
+                .btn {
+                    border: none;
+                    padding: 8px 14px;
+                    border-radius: 10px;
+                    font-weight: 900;
+                    cursor: pointer;
+                    margin: 0 6px;
+                    background: #111;
+                    color: #fff;
+                }
+                .btn.ghost { background:#eee; color:#111; }
+            }
+            @media print {
+                .no-print { display: none !important; }
+            }
+        `;
+
+        const onePrintHtml = (l) => {
+            const nameHtml = showProductName ? `<div class="name">${escapeHtml(l.productName || "")}</div>` : "";
+            const variantHtml = showVariantName ? `<div class="variant">${escapeHtml(l.variantName || "")}</div>` : "";
+            const textUnder = showTextUnderBarcode ? `<div class="textUnder">${escapeHtml(l.codeValue || "")}</div>` : "";
+            const batchHtml = showBatchNo ? `<div class="batch">${l.batchNo ? `Batch: ${escapeHtml(l.batchNo)}` : "Batch: -"}</div>` : "";
+            const priceHtml = showSalePrice ? `<div class="price">${l.salePrice ? `৳${Number(l.salePrice).toFixed(2)}` : "-"}</div>` : "";
+            const slipTotals =
+                printMode === "slip" && showSlipTotals
+                    ? `<div class="slipLine"><span>Qty</span><span>${escapeHtml(l.qty || 0)}</span></div>`
+                    : "";
+
+            return `
+                <div class="label">
+                    <div class="wrap">
+                        ${nameHtml}
+                        ${variantHtml}
+                        <div class="barcodeBox">${l.svgHtml || ""}</div>
+                        ${textUnder}
+                        ${batchHtml}
+                        ${priceHtml}
+                        ${slipTotals}
+                    </div>
+                </div>
+            `;
+        };
+
+        const bodyHtml = labels
+            .map((l) => {
+                const rotClass = orientation === "landscape" ? "rotFix landscape" : "rotFix";
+                return `
+                  <div class="page">
+                    <div class="${rotClass}">
+                      ${onePrintHtml(l)}
+                    </div>
+                  </div>
+                `;
+            })
+            .join("");
+
+        const title = cfg.printMode === "slip" ? "Slip" : "Label";
+
+        const html = `
+            <!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8" />
+                <title>${title} Barcode Print</title>
+                <style>${css}</style>
+            </head>
+            <body>
+                ${bodyHtml}
+                <div class="no-print">
+                    <div style="font-size:12px;font-weight:900;">
+                        Print settings: <b>Scale 100%</b> • Margins None • Headers/Footers Off • Fit/Shrink OFF
+                    </div>
+                    <div style="margin-top:10px;">
+                        <button class="btn" onclick="window.print()">Print</button>
+                        <button class="btn ghost" onclick="window.close()">Close</button>
+                    </div>
+                </div>
+                <script>
+                    setTimeout(function(){ window.print(); }, 250);
+                </script>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+
+        closeBulkModal();
+    };
+
+    // ✅ One entry point: based on printType
+    const handleBulkBarcodePrint = () => {
+        if (barcodeConfig.printType === "rp400") return handleRp400BarcodePrint();
+        return handleSheetBarcodePrint();
     };
 
     // ====== Sticky column helper classes ======
@@ -509,171 +944,538 @@ export default function Product({ product, filters }) {
                                 </button>
                             </div>
 
+                            {/* ✅ Choose Print Type (TWO KIND OF PRINT) */}
                             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                                 <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
                                     <Layers size={14} />
-                                    Label Content
+                                    Print Type
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
                                         <input
-                                            type="checkbox"
-                                            checked={barcodeConfig.showProductName}
-                                            onChange={(e) => updateBarcodeConfig("showProductName", e.target.checked)}
-                                            className="checkbox checkbox-sm"
+                                            type="radio"
+                                            name="printType"
+                                            checked={barcodeConfig.printType === "sheet"}
+                                            onChange={() => updateBarcodeConfig("printType", "sheet")}
                                         />
-                                        <span className="font-black text-sm">Product Name</span>
+                                        <span className="font-black text-sm">Sheet Grid (A4)</span>
                                     </label>
 
                                     <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
                                         <input
-                                            type="checkbox"
-                                            checked={barcodeConfig.showBatchNo}
-                                            onChange={(e) => updateBarcodeConfig("showBatchNo", e.target.checked)}
-                                            className="checkbox checkbox-sm"
+                                            type="radio"
+                                            name="printType"
+                                            checked={barcodeConfig.printType === "rp400"}
+                                            onChange={() => updateBarcodeConfig("printType", "rp400")}
                                         />
-                                        <span className="font-black text-sm">Batch No</span>
-                                    </label>
-
-                                    <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={barcodeConfig.showSalePrice}
-                                            onChange={(e) => updateBarcodeConfig("showSalePrice", e.target.checked)}
-                                            className="checkbox checkbox-sm"
-                                        />
-                                        <span className="font-black text-sm">Sale Price</span>
+                                        <span className="font-black text-sm">Label Printer (RP400)</span>
                                     </label>
                                 </div>
-                            </div>
 
-                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
-                                        <AlignLeft size={14} />
-                                        Print Alignment
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => updateBarcodeConfig("align", "left")}
-                                            className={`btn btn-sm flex-1 ${
-                                                barcodeConfig.align === "left" ? "btn-primary" : "btn-outline"
-                                            }`}
-                                        >
-                                            <AlignLeft size={16} /> Left
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => updateBarcodeConfig("align", "right")}
-                                            className={`btn btn-sm flex-1 ${
-                                                barcodeConfig.align === "right" ? "btn-primary" : "btn-outline"
-                                            }`}
-                                        >
-                                            <AlignRight size={16} /> Right
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Copies</div>
-
-                                    <div className="flex flex-col gap-2">
-                                        <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="copiesMode"
-                                                checked={barcodeConfig.copiesMode === "one"}
-                                                onChange={() => updateBarcodeConfig("copiesMode", "one")}
-                                            />
-                                            One label
-                                        </label>
-
-                                        <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="copiesMode"
-                                                checked={barcodeConfig.copiesMode === "byQty"}
-                                                onChange={() => updateBarcodeConfig("copiesMode", "byQty")}
-                                            />
-                                            By quantity
-                                        </label>
-
-                                        <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="copiesMode"
-                                                checked={barcodeConfig.copiesMode === "fixed"}
-                                                onChange={() => updateBarcodeConfig("copiesMode", "fixed")}
-                                            />
-                                            Fixed
-                                        </label>
-
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={barcodeConfig.fixedCopies}
-                                            onChange={(e) => updateBarcodeConfig("fixedCopies", e.target.value)}
-                                            disabled={barcodeConfig.copiesMode !== "fixed"}
-                                            className="input input-sm input-bordered font-mono"
-                                            placeholder="Copies"
-                                        />
-                                    </div>
+                                <div className="mt-2 text-[11px] font-bold text-gray-500">
+                                    Sheet = multiple labels on page • RP400 = exact @page size for label/slip
                                 </div>
                             </div>
 
-                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">W (mm)</div>
-                                    <input
-                                        type="number"
-                                        min="20"
-                                        step="1"
-                                        value={barcodeConfig.labelWidthMm}
-                                        onChange={(e) => updateBarcodeConfig("labelWidthMm", e.target.value)}
-                                        className="input input-sm input-bordered font-mono w-full"
-                                    />
-                                </div>
+                            {/* ========================= */}
+                            {/* ✅ SHEET SETTINGS (FIRST JSX) */}
+                            {/* ========================= */}
+                            {barcodeConfig.printType === "sheet" && (
+                                <>
+                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 mt-4">
+                                        <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                            <Layers size={14} />
+                                            Label Content
+                                        </div>
 
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">H (mm)</div>
-                                    <input
-                                        type="number"
-                                        min="15"
-                                        step="1"
-                                        value={barcodeConfig.labelHeightMm}
-                                        onChange={(e) => updateBarcodeConfig("labelHeightMm", e.target.value)}
-                                        className="input input-sm input-bordered font-mono w-full"
-                                    />
-                                </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.sheet.showProductName}
+                                                    onChange={(e) => updateBarcodeConfig("sheet.showProductName", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Product Name</span>
+                                            </label>
 
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Gap (mm)</div>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        value={barcodeConfig.gapMm}
-                                        onChange={(e) => updateBarcodeConfig("gapMm", e.target.value)}
-                                        className="input input-sm input-bordered font-mono w-full"
-                                    />
-                                </div>
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.sheet.showBatchNo}
+                                                    onChange={(e) => updateBarcodeConfig("sheet.showBatchNo", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Batch No</span>
+                                            </label>
 
-                                <div className="rounded-xl border border-gray-100 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Img (px)</div>
-                                    <input
-                                        type="number"
-                                        min="20"
-                                        step="1"
-                                        value={barcodeConfig.barcodeImgHeightPx}
-                                        onChange={(e) => updateBarcodeConfig("barcodeImgHeightPx", e.target.value)}
-                                        className="input input-sm input-bordered font-mono w-full"
-                                    />
-                                </div>
-                            </div>
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.sheet.showSalePrice}
+                                                    onChange={(e) => updateBarcodeConfig("sheet.showSalePrice", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Sale Price</span>
+                                            </label>
+                                        </div>
+                                    </div>
 
+                                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                                <AlignLeft size={14} />
+                                                Print Alignment
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("sheet.align", "left")}
+                                                    className={`btn btn-sm flex-1 ${
+                                                        barcodeConfig.sheet.align === "left" ? "btn-primary" : "btn-outline"
+                                                    }`}
+                                                >
+                                                    <AlignLeft size={16} /> Left
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("sheet.align", "right")}
+                                                    className={`btn btn-sm flex-1 ${
+                                                        barcodeConfig.sheet.align === "right" ? "btn-primary" : "btn-outline"
+                                                    }`}
+                                                >
+                                                    <AlignRight size={16} /> Right
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Copies</div>
+
+                                            <div className="flex flex-col gap-2">
+                                                <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="sheetCopiesMode"
+                                                        checked={barcodeConfig.sheet.copiesMode === "one"}
+                                                        onChange={() => updateBarcodeConfig("sheet.copiesMode", "one")}
+                                                    />
+                                                    One label
+                                                </label>
+
+                                                <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="sheetCopiesMode"
+                                                        checked={barcodeConfig.sheet.copiesMode === "byQty"}
+                                                        onChange={() => updateBarcodeConfig("sheet.copiesMode", "byQty")}
+                                                    />
+                                                    By quantity
+                                                </label>
+
+                                                <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="sheetCopiesMode"
+                                                        checked={barcodeConfig.sheet.copiesMode === "fixed"}
+                                                        onChange={() => updateBarcodeConfig("sheet.copiesMode", "fixed")}
+                                                    />
+                                                    Fixed
+                                                </label>
+
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    step="1"
+                                                    value={barcodeConfig.sheet.fixedCopies}
+                                                    onChange={(e) => updateBarcodeConfig("sheet.fixedCopies", e.target.value)}
+                                                    disabled={barcodeConfig.sheet.copiesMode !== "fixed"}
+                                                    className="input input-sm input-bordered font-mono"
+                                                    placeholder="Copies"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">W (mm)</div>
+                                            <input
+                                                type="number"
+                                                min="20"
+                                                step="1"
+                                                value={barcodeConfig.sheet.labelWidthMm}
+                                                onChange={(e) => updateBarcodeConfig("sheet.labelWidthMm", e.target.value)}
+                                                className="input input-sm input-bordered font-mono w-full"
+                                            />
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">H (mm)</div>
+                                            <input
+                                                type="number"
+                                                min="15"
+                                                step="1"
+                                                value={barcodeConfig.sheet.labelHeightMm}
+                                                onChange={(e) => updateBarcodeConfig("sheet.labelHeightMm", e.target.value)}
+                                                className="input input-sm input-bordered font-mono w-full"
+                                            />
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Gap (mm)</div>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                value={barcodeConfig.sheet.gapMm}
+                                                onChange={(e) => updateBarcodeConfig("sheet.gapMm", e.target.value)}
+                                                className="input input-sm input-bordered font-mono w-full"
+                                            />
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Img (px)</div>
+                                            <input
+                                                type="number"
+                                                min="20"
+                                                step="1"
+                                                value={barcodeConfig.sheet.barcodeImgHeightPx}
+                                                onChange={(e) => updateBarcodeConfig("sheet.barcodeImgHeightPx", e.target.value)}
+                                                className="input input-sm input-bordered font-mono w-full"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 text-xs text-gray-500">
+                                        <div className="font-bold">Note:</div>
+                                        <div>Uses tec-it.com barcode service. Make sure your browser allows images from external sources.</div>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* ========================= */}
+                            {/* ✅ RP400 SETTINGS (SECOND JSX) */}
+                            {/* ========================= */}
+                            {barcodeConfig.printType === "rp400" && (
+                                <>
+                                    {/* ✅ Print Mode */}
+                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 mt-4">
+                                        <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                            <Layers size={14} />
+                                            RP400 Print Mode
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="rp400PrintMode"
+                                                    checked={barcodeConfig.rp400.printMode === "label"}
+                                                    onChange={() => updateBarcodeConfig("rp400.printMode", "label")}
+                                                />
+                                                <span className="font-black text-sm">Label</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="rp400PrintMode"
+                                                    checked={barcodeConfig.rp400.printMode === "slip"}
+                                                    onChange={() => updateBarcodeConfig("rp400.printMode", "slip")}
+                                                />
+                                                <span className="font-black text-sm">Mini Slip</span>
+                                            </label>
+                                        </div>
+
+                                        {barcodeConfig.rp400.printMode === "slip" && (
+                                            <label className="mt-3 flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showSlipTotals}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showSlipTotals", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Show Qty line (Slip)</span>
+                                            </label>
+                                        )}
+
+                                        <div className="mt-2 text-[11px] font-bold text-gray-500">
+                                            IMPORTANT: Chrome print → Scale <span className="text-gray-900">100%</span> (no fit/shrink)
+                                        </div>
+                                    </div>
+
+                                    {/* ✅ Label Content */}
+                                    <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                            <Layers size={14} />
+                                            Label Content
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showProductName}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showProductName", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Product Name</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showVariantName}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showVariantName", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Variant Name</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showBatchNo}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showBatchNo", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Batch No</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showSalePrice}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showSalePrice", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Sale Price</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={barcodeConfig.rp400.showTextUnderBarcode}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.showTextUnderBarcode", e.target.checked)}
+                                                    className="checkbox checkbox-sm"
+                                                />
+                                                <span className="font-black text-sm">Text under barcode</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* ✅ Orientation + Alignment */}
+                                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                                <AlignLeft size={14} />
+                                                Print Alignment
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("rp400.align", "left")}
+                                                    className={`btn btn-sm flex-1 ${barcodeConfig.rp400.align === "left" ? "btn-primary" : "btn-outline"}`}
+                                                >
+                                                    <AlignLeft size={16} /> Left
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("rp400.align", "center")}
+                                                    className={`btn btn-sm flex-1 ${barcodeConfig.rp400.align === "center" ? "btn-primary" : "btn-outline"}`}
+                                                >
+                                                    Center
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("rp400.align", "right")}
+                                                    className={`btn btn-sm flex-1 ${barcodeConfig.rp400.align === "right" ? "btn-primary" : "btn-outline"}`}
+                                                >
+                                                    <AlignRight size={16} /> Right
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-100 p-4">
+                                            <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Orientation (Fix rotate)</div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("rp400.orientation", "portrait")}
+                                                    className={`btn btn-sm flex-1 ${
+                                                        barcodeConfig.rp400.orientation === "portrait" ? "btn-primary" : "btn-outline"
+                                                    }`}
+                                                >
+                                                    Portrait
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateBarcodeConfig("rp400.orientation", "landscape")}
+                                                    className={`btn btn-sm flex-1 ${
+                                                        barcodeConfig.rp400.orientation === "landscape" ? "btn-primary" : "btn-outline"
+                                                    }`}
+                                                >
+                                                    Landscape
+                                                </button>
+                                            </div>
+                                            <div className="text-[10px] font-bold text-gray-500 mt-2">
+                                                If printer prints rotated/sideways → choose Landscape.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* ✅ Sizes */}
+                                    <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Sizes</div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Label W</div>
+                                                <input
+                                                    type="number"
+                                                    min="20"
+                                                    step="1"
+                                                    value={barcodeConfig.rp400.labelWidthMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.labelWidthMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Label H</div>
+                                                <input
+                                                    type="number"
+                                                    min="15"
+                                                    step="1"
+                                                    value={barcodeConfig.rp400.labelHeightMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.labelHeightMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Slip W</div>
+                                                <input
+                                                    type="number"
+                                                    min="40"
+                                                    step="1"
+                                                    value={barcodeConfig.rp400.slipWidthMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.slipWidthMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Slip H</div>
+                                                <input
+                                                    type="number"
+                                                    min="10"
+                                                    step="1"
+                                                    value={barcodeConfig.rp400.slipHeightMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.slipHeightMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Padding</div>
+                                                <input
+                                                    type="number"
+                                                    min="0.5"
+                                                    step="0.1"
+                                                    value={barcodeConfig.rp400.paddingMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.paddingMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Barcode H</div>
+                                                <input
+                                                    type="number"
+                                                    min="8"
+                                                    max="26"
+                                                    step="0.5"
+                                                    value={barcodeConfig.rp400.barcodeHeightMm}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.barcodeHeightMm", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">BarW (px)</div>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="3"
+                                                    step="0.1"
+                                                    value={barcodeConfig.rp400.barWidthPx}
+                                                    onChange={(e) => updateBarcodeConfig("rp400.barWidthPx", e.target.value)}
+                                                    className="input input-sm input-bordered font-mono w-full"
+                                                />
+                                                <div className="text-[10px] text-gray-500 mt-1 font-bold">0 = Auto</div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-100 p-4 bg-white">
+                                                <div className="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-2">Copies</div>
+                                                <div className="flex flex-col gap-2">
+                                                    <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="rp400CopiesMode"
+                                                            checked={barcodeConfig.rp400.copiesMode === "one"}
+                                                            onChange={() => updateBarcodeConfig("rp400.copiesMode", "one")}
+                                                        />
+                                                        One
+                                                    </label>
+
+                                                    <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="rp400CopiesMode"
+                                                            checked={barcodeConfig.rp400.copiesMode === "byQty"}
+                                                            onChange={() => updateBarcodeConfig("rp400.copiesMode", "byQty")}
+                                                        />
+                                                        By Qty
+                                                    </label>
+
+                                                    <label className="flex items-center gap-2 font-black text-sm cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="rp400CopiesMode"
+                                                            checked={barcodeConfig.rp400.copiesMode === "fixed"}
+                                                            onChange={() => updateBarcodeConfig("rp400.copiesMode", "fixed")}
+                                                        />
+                                                        Fixed
+                                                    </label>
+
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        step="1"
+                                                        value={barcodeConfig.rp400.fixedCopies}
+                                                        onChange={(e) => updateBarcodeConfig("rp400.fixedCopies", e.target.value)}
+                                                        disabled={barcodeConfig.rp400.copiesMode !== "fixed"}
+                                                        className="input input-sm input-bordered font-mono"
+                                                        placeholder="Copies"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 text-xs text-gray-500">
+                                        <div className="font-bold">Fixed:</div>
+                                        <div>✅ SVG stretch বন্ধ • ✅ viewBox set • ✅ Portrait/Landscape rotate fix</div>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* ✅ Buttons */}
                             <div className="mt-4 flex gap-2">
                                 <button type="button" onClick={closeBulkModal} className="btn btn-ghost flex-1">
                                     Cancel
@@ -682,11 +1484,6 @@ export default function Product({ product, filters }) {
                                     <Printer size={18} />
                                     Print Barcodes
                                 </button>
-                            </div>
-
-                            <div className="mt-3 text-xs text-gray-500">
-                                <div className="font-bold">Note:</div>
-                                <div>Uses tec-it.com barcode service. Make sure your browser allows images from external sources.</div>
                             </div>
                         </div>
                     </div>
@@ -739,7 +1536,7 @@ export default function Product({ product, filters }) {
 
                                 <th>{t("product.product_name", "Product Name")}</th>
                                 <th className="w-[140px]">{t("product.category", "Category")}</th>
-                                <th className="w-[140px]">{t("product.attributes", "Attributes")}</th>
+                                {/* <th className="w-[140px]">{t("product.attributes", "Attributes")}</th> */}
                                 <th className="w-[140px]">{t("product.total_stock", "Total Stock")}</th>
                                 <th className="w-[360px]">{t("product.variants", "Variants")}</th>
                                 <th className="w-[360px]">{t("product.barcodes", "Barcodes")}</th>
@@ -789,7 +1586,7 @@ export default function Product({ product, filters }) {
 
                                             <td>{productItem.category?.name || t("product.not_available", "N/A")}</td>
 
-                                            <td>
+                                            {/* <td>
                                                 <div className="flex items-center gap-2">
                                                     <Tag size={14} className="text-purple-600" />
                                                     <span className="text-sm">
@@ -797,7 +1594,7 @@ export default function Product({ product, filters }) {
                                                         {attributesCount === 1 ? t("product.attribute", "attribute") : t("product.attributes_plural", "attributes")}
                                                     </span>
                                                 </div>
-                                            </td>
+                                            </td> */}
 
                                             <td>
                                                 <div className="flex items-center gap-2">
