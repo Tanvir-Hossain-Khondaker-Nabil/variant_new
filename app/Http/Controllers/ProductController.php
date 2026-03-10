@@ -106,7 +106,6 @@ class ProductController extends Controller
             'variants.stock'
         ])->findOrFail($id);
 
-        // Calculate total stock including variants
         $totalStock = 0;
         $totalBaseStock = 0;
 
@@ -132,10 +131,30 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
+        $brandId = $request->input('brand_id');
+        $categoryId = $request->input('category_id');
+        
         $products = Product::latest()
-            ->with(['category', 'brand', 'variants', 'variants.stocks']) // ✅ stocks (many)
+            ->with(['category', 'brand', 'variants', 'variants.stocks']) 
             ->filter($request->only('search'))
-            ->paginate(10);
+            ->when($categoryId, function ($query, $categoryId) {
+                return $query->whereHas('category', function ($q) use ($categoryId) {
+                    $q->where('id', $categoryId);
+                });
+            })
+            ->when($brandId, function ($query, $brandId) {
+                return $query->whereHas('brand', function ($q) use ($brandId) {
+                    $q->where('id', $brandId);
+                });
+            })
+            ->when(request()->filled(['start_date', 'end_date']), function ($q) {
+                $q->whereBetween('created_at', [
+                    request()->start_date,
+                    request()->end_date
+                ]);
+            })
+            ->paginate(20)
+            ->withQueryString();
 
         // Calculate stock for each product
         $products->getCollection()->transform(function ($product) {
@@ -158,6 +177,8 @@ class ProductController extends Controller
         return Inertia::render("product/Product", [
             'filters' => $request->only('search'),
             'product' => $products,
+            'brands' => Brand::all(),
+            'categories' => Category::all(),
             'unitConversions' => $this->getUnitConversions()
         ]);
     }

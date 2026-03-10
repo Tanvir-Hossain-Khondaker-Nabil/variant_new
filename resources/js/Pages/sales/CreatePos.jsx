@@ -54,8 +54,8 @@ export default function AddSale({
     const pageSize = 8;
 
     // Installment payment state
-    const [installmentDuration, setInstallmentDuration] = useState(0);
-    const [totalInstallments, setTotalInstallments] = useState(0);
+    const [installmentDuration, setInstallmentDuration] = useState(null);
+    const [totalInstallments, setTotalInstallments] = useState(null);
 
     // Customer state
     const [customerId, setCustomerId] = useState("");
@@ -89,8 +89,8 @@ export default function AddSale({
     // Pickup form
     const [pickupProductName, setPickupProductName] = useState("");
     const [pickupQuantity, setPickupQuantity] = useState(1);
-    const [pickupUnitPrice, setPickupUnitPrice] = useState(0);
-    const [pickupSalePrice, setPickupSalePrice] = useState(0);
+    const [pickupUnitPrice, setPickupUnitPrice] = useState(null);
+    const [pickupSalePrice, setPickupSalePrice] = useState(null);
 
     // Order info
     const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0]);
@@ -1702,12 +1702,12 @@ export default function AddSale({
                                                 </label>
                                                 <input
                                                     type="number"
-                                                    step="0.01"
+                                                    // step="0.01"
                                                     className="input input-bordered input-sm w-full bg-white border-gray-300 text-gray-800"
                                                     value={paidAmount}
                                                     onChange={(e) => handlePaidAmountChange(e.target.value)}
                                                     disabled={!manualPaymentOverride && paymentStatus === "unpaid"}
-                                                    min={0}
+                                                    // min={0}
                                                     max={grandTotal}
                                                 />
                                             </div>

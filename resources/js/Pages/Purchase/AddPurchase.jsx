@@ -46,20 +46,20 @@ export default function AddPurchase({
   const [productSearch, setProductSearch] = useState("");
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState("unpaid");
-  const [paidAmount, setPaidAmount] = useState(0);
+  const [paidAmount, setPaidAmount] = useState(null);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [usePartialPayment, setUsePartialPayment] = useState(false);
   const [adjustFromAdvance, setAdjustFromAdvance] = useState(false);
-  const [availableAdvance, setAvailableAdvance] = useState(0);
+  const [availableAdvance, setAvailableAdvance] = useState(null);
   const [manualPaymentOverride, setManualPaymentOverride] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [brands, setBrands] = useState([]);
-  const [transportationCost, setTransportationCost] = useState(0);
+  const [transportationCost, setTransportationCost] = useState(null);
 
   // Installment payment state
-  const [installmentDuration, setInstallmentDuration] = useState(0);
-  const [totalInstallments, setTotalInstallments] = useState(0);
+  const [installmentDuration, setInstallmentDuration] = useState(null);
+  const [totalInstallments, setTotalInstallments] = useState(null);
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -491,7 +491,7 @@ export default function AddPurchase({
         [itemKey]: currentQty + 1,
       }));
     } else {
-      const unitCost = variant.unit_cost || 0;
+      const unitCost = variant.unit_cost ;
       const salePrice = variant.selling_price || unitCost * 1.2; // Default 20% markup
 
       // Create display name for variant
@@ -989,12 +989,12 @@ export default function AddPurchase({
                 <span className="absolute left-3 top-3 text-gray-500">৳</span>
                 <input
                   type="number"
-                  step="0.01"
-                  min="0"
+                  // step="0.01"
+                  // min="0"
                   className="input input-bordered w-full rounded-xl text-sm pl-8"
                   value={transportationCost}
                   onChange={handleTransportationCostChange}
-                  placeholder="0.00"
+                  placeholder="transportation cost"
                 />
               </div>
             </div>
@@ -1080,11 +1080,11 @@ export default function AddPurchase({
                     <div className="form-control">
                       <input
                         type="number"
-                        step="0.01"
                         className="input input-bordered input-xs w-full bg-white border-gray-300 font-mono text-[11px]"
                         value={paidAmount}
                         onChange={handleManualPaymentInput}
                         disabled={!manualPaymentOverride && adjustFromAdvance}
+                        placeholder="Paid Amount"
                       />
                     </div>
                   </div>
@@ -1454,22 +1454,10 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  // step="0.01"
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
-                                  value={
-                                    item.unit_price ||
-                                    0
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    updateItem(
-                                      index,
-                                      "unit_price",
-                                      e
-                                        .target
-                                        .value
-                                    )
+                                  value={ item.unit_price    }
+                                  onChange={( e ) =>updateItem(   index,"unit_price",  e.target.value)
                                   }
                                 />
                               </div>
@@ -1483,22 +1471,9 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  // step="0.01"
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
-                                  value={
-                                    item.sale_price ||
-                                    0
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    updateItem(
-                                      index,
-                                      "sale_price",
-                                      e
-                                        .target
-                                        .value
-                                    )
+                                  value={item.sale_price } onChange={( e ) =>updateItem(  index,"sale_price",e.target.value)
                                   }
                                 />
                               </div>

@@ -179,9 +179,9 @@ export default function Customers({ customers, filters, accounts }) {
         phone: "",
         address: "",
         email: "",
-        advance_amount: 0,
+        advance_amount: null,
         account_id: "",
-        due_amount: 0,
+        due_amount: null,
         is_active: true,
     });
 
@@ -2776,8 +2776,8 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                step="0.01"
-                                                min="0"
+                                                // step="0.01"
+                                                // min="0"
                                                 value={
                                                     customerForm.data
                                                         .advance_amount
@@ -2786,8 +2786,8 @@ export default function Customers({ customers, filters, accounts }) {
                                                     customerForm.setData(
                                                         "advance_amount",
                                                         parseFloat(
-                                                            e.target.value,
-                                                        ) || 0,
+                                                            e.target.value
+                                                        ) 
                                                     )
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${customerForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}
@@ -2825,8 +2825,8 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                step="0.01"
-                                                min="0"
+                                                // step="0.01"
+                                                // min="0"
                                                 value={
                                                     customerForm.data.due_amount
                                                 }
@@ -2834,8 +2834,8 @@ export default function Customers({ customers, filters, accounts }) {
                                                     customerForm.setData(
                                                         "due_amount",
                                                         parseFloat(
-                                                            e.target.value,
-                                                        ) || 0,
+                                                            e.target.value
+                                                        ) 
                                                     )
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${customerForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}
