@@ -154,13 +154,23 @@ const outletLoggedInMenu = [
 
 
   // Reports all
-  { title: "All Orders (Inventory)", icon: "badge-cent", route: "sales.index", active: "sales.index", category: "Reports", permission: "sales.view" },
-  { title: "All Orders (POS)", icon: "badge-cent", route: "salesPos.index", active: "salesPos.index", category: "Reports", permission: "sales.view" },
-  { title: "All Sales Items", icon: "badge-cent", route: "salesItems.list", active: "salesItems.list", category: "Reports", permission: "sales.view" },
-  { title: "Purchase", icon: "receipt", route: "purchase.list", active: "purchase.list", category: "Reports", permission: "purchase.view" },
-  { title: "Local Purchase", icon: "receipt", route: "purchase.list_index", active: "purchase.list_index", category: "Reports", permission: "purchase.list_index" },
-  { title: "All Purchase Items", icon: "arrow-right-left", route: "purchase.items", active: "purchase.items", category: "Reports", permission: "purchase.items_view" },
-  { title: "Transactions", icon: "dollar-sign", route: "payments.index", active: "payments.index", category: "Reports", permission: "payments.view" },
+  { title: "All Sales Reports ", icon: "badge-cent", route: "reports.sales", active: "reports.sales", category: "Reports", permission: "sales.view" },
+  { title: "All Purchase Reports", icon: "badge-cent", route: "reports.purchase", active: "reports.purchase", category: "Reports", permission: "purchase.view" },
+  
+  { title: "All SalesItems Reports", icon: "badge-cent", route: "reports.sales.items", active: "reports.sales.items", category: "Reports", permission: "sales.view" },
+  { title: "All PurchaseItems Reports", icon: "arrow-right-left", route: "reports.purchase.items", active: "reports.purchase.items", category: "Reports", permission: "purchase.items_view" },
+  
+  { title: "All SalesReturn Reports", icon: "badge-cent", route: "reports.sales-return", active: "reports.sales-return", category: "Reports", permission: "sales.view" },
+  { title: "All PurchaseReturn Reports", icon: "badge-cent", route: "reports.purchase-return", active: "reports.purchase-return", category: "Reports", permission: "purchase_return.view" },
+
+  { title: "All Damages Reports", icon: "alert-circle", route: "damages.index", active: "damages.index", category: "Reports", permission: "damages.index" },
+  { title: "All Customer Reports", icon: "alert-circle", route: "reports.customer", active: "reports.customer", category: "Reports", permission: "customer.view" },
+  { title: "All Supplier Reports", icon: "alert-circle", route: "reports.supplier", active: "reports.supplier", category: "Reports", permission: "supplier.view" },
+  { title: "All Transaction Reports", icon: "dollar-sign", route: "reports.transaction", active: "reports.transaction", category: "Reports", permission: "payments.view" },
+  { title: "All Account Reports", icon: "dollar-sign", route: "reports.account", active: "reports.account", category: "Reports", permission: "accounts.view" },
+  { title: "All Product Reports", icon: "dollar-sign", route: "reports.product", active: "reports.product", category: "Reports", permission: "product.view" },
+  { title: "All Expense Reports", icon: "dollar-sign", route: "reports.expense", active: "reports.expense", category: "Reports", permission: "expense.view" },
+
 
 
   // CRM
