@@ -315,6 +315,7 @@ class PurchaseController extends Controller
         ]);
     }
 
+
     public function create()
     {
         $user = Auth::user();
@@ -1042,6 +1043,7 @@ class PurchaseController extends Controller
     }
 
 
+
     public function destroy($id)
     {
         DB::beginTransaction();
@@ -1050,20 +1052,20 @@ class PurchaseController extends Controller
 
             // Restore account balance if payment exists
             $payment = Payment::where('purchase_id', $purchase->id)->first();
+
             if ($payment && $payment->account_id) {
                 $account = Account::find($payment->account_id);
                 if ($account) {
-                    $paymentAmount = abs($payment->getSignedAmount());
+                    $paymentAmount = abs($payment->amount);
                     $account->updateBalance($paymentAmount, 'deposit');
                 }
             }
 
             // Delete stock batch-wise
             foreach ($purchase->items as $item) {
-                $stock = Stock::where('warehouse_id', $purchase->warehouse_id)
-                    ->where('product_id', $item->product_id)
+                $stock = Stock::where('product_id', $item->product_id)
+                    ->orWhere('warehouse_id', $purchase->warehouse_id)
                     ->where('variant_id', $item->variant_id)
-                    ->where('batch_no', 'LIKE', 'PO-' . $item->id . '-%')
                     ->first();
 
                 if ($stock)

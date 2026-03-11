@@ -2164,11 +2164,11 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                           <Edit size={16} />
                         </Link>
 
-                        {auth?.role === "admin" && (
+                        {/* {auth?.role === "admin" && ( */}
                           <button onClick={() => handleDelete(purchase.id)} className="btn btn-ghost btn-square btn-xs text-red-400 hover:bg-red-600 hover:text-white" title="Delete Purchase">
                             <Trash2 size={16} />
                           </button>
-                        )}
+                        {/* )} */}
                       </div>
                     </td>
                   </tr>
