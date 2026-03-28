@@ -179,9 +179,9 @@ export default function Suppliers({ suppliers, filters, accounts }) {
         company: "",
         address: "",
         email: "",
-        advance_amount: 0,
+        advance_amount: null,
         account_id: "",
-        due_amount: 0,
+        due_amount: null,
         is_active: true,
         type: true,
     });
@@ -2721,19 +2721,11 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                step="0.01"
-                                                min="0"
-                                                value={
-                                                    supplierForm.data
-                                                        .advance_amount
-                                                }
+                                                // step="0.01"
+                                                // min="0"
+                                                value={supplierForm.data.advance_amount}
                                                 onChange={(e) =>
-                                                    supplierForm.setData(
-                                                        "advance_amount",
-                                                        parseFloat(
-                                                            e.target.value,
-                                                        ) || 0,
-                                                    )
+                                                    supplierForm.setData( "advance_amount",parseFloat(e.target.value))
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${supplierForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}
                                                 placeholder={t(
@@ -2770,8 +2762,8 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                step="0.01"
-                                                min="0"
+                                                // step="0.01"
+                                                // min="0"
                                                 value={
                                                     supplierForm.data.due_amount
                                                 }
@@ -2779,8 +2771,8 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                                     supplierForm.setData(
                                                         "due_amount",
                                                         parseFloat(
-                                                            e.target.value,
-                                                        ) || 0,
+                                                            e.target.value
+                                                        ) 
                                                     )
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${supplierForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}

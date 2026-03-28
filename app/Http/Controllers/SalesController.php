@@ -662,7 +662,7 @@ class SalesController extends Controller
 
                         'unit_price' => $unitPrice,
                         'total_price' => $unitQuantity * $unitPrice,
-                        'stock_id' => $stockUsed['stock_id'] ?? null,
+                        'stock_id' => $stockUsed['stock_id'] ?? $item['stock_id'],
 
                         'shadow_unit_price' => $shadowUnitPrice,
                         'shadow_total_price' => $unitQuantity * $shadowUnitPrice,

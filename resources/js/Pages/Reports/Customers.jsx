@@ -36,9 +36,9 @@ import {
     ChevronUp,
 } from "lucide-react";
 import { useState } from "react";
-import PageHeader from "../components/PageHeader";
-import Pagination from "../components/Pagination";
-import { useTranslation } from "../hooks/useTranslation";
+import PageHeader from "../../components/PageHeader";
+import Pagination from "../../components/Pagination";
+import { useTranslation } from "../../hooks/useTranslation";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -55,12 +55,12 @@ export default function Customers({ customers, filters, accounts }) {
     const [showFilters, setShowFilters] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Handle search and filters
+    // Handle search and filters - matching controller filters
     const [localFilters, setLocalFilters] = useState({
-        search: filters.search || "",
-        status: filters.status || "",
-        date_from: filters.date_from || "",
-        date_to: filters.date_to || "",
+        search: filters?.search || "",
+        status: filters?.status || "",
+        date_from: filters?.date_from || "",
+        date_to: filters?.date_to || "",
     });
 
     const [paymentData, setPaymentData] = useState({
@@ -135,7 +135,7 @@ export default function Customers({ customers, filters, accounts }) {
         if (localFilters.date_to) queryParams.date_to = localFilters.date_to;
 
         router.get(
-            route("customer.index"),
+            route("reports.customer"),
             queryParams,
             {
                 preserveScroll: true,
@@ -147,7 +147,7 @@ export default function Customers({ customers, filters, accounts }) {
 
     const clearFilters = () => {
         setLocalFilters({ search: "", status: "", date_from: "", date_to: "" });
-        router.get(route("customer.index"), {}, { replace: true });
+        router.get(route("reports.customer"), {}, { replace: true });
     };
 
     const handleKeyPress = (e) => {
@@ -159,7 +159,7 @@ export default function Customers({ customers, filters, accounts }) {
     // Format date for input
     const formatDateForInput = (dateString) => {
         if (!dateString) return '';
-        return new Date(dateString).toISOString().split('T')[0];
+        return dateString; // Already in YYYY-MM-DD format from controller
     };
 
     // Toggle filter section
@@ -172,6 +172,15 @@ export default function Customers({ customers, filters, accounts }) {
         return localFilters.search || localFilters.status || localFilters.date_from || localFilters.date_to;
     };
 
+    // Format date for filename
+    const formatDateForFilename = () => {
+        const now = new Date();
+        return now.toISOString().split('T')[0] + '_' + 
+               now.getHours() + '-' + 
+               now.getMinutes() + '-' + 
+               now.getSeconds();
+    };
+
     // Handle customer form submission
     const customerForm = useForm({
         id: "",
@@ -179,9 +188,9 @@ export default function Customers({ customers, filters, accounts }) {
         phone: "",
         address: "",
         email: "",
-        advance_amount: null,
+        advance_amount: 0,
         account_id: "",
-        due_amount: null,
+        due_amount: 0,
         is_active: true,
     });
 
@@ -278,74 +287,6 @@ export default function Customers({ customers, filters, accounts }) {
         );
     };
 
-    const handleClearDueSubmit = async (e) => {
-        e.preventDefault();
-
-        if (!selectedCustomer) return;
-
-        // Validation
-        const errors = {};
-        const amount = parseFloat(clearDueData.paid_amount) || 0;
-        const dueAmount = calculateDueAmount(selectedCustomer.sales);
-
-        if (amount <= 0) {
-            errors.paid_amount = t(
-                "customer.amount_greater_than_zero",
-                "Amount must be greater than 0",
-            );
-        }
-
-        if (amount > dueAmount) {
-            errors.paid_amount = t(
-                "customer.amount_exceeds_due",
-                "Amount cannot exceed total due amount",
-            );
-        }
-
-        // Validate payment method
-        if (clearDueData.payment_type === "advance_adjustment") {
-            const advanceAmount =
-                parseFloat(selectedCustomer.advance_amount) || 0;
-            if (advanceAmount < amount) {
-                errors.paid_amount = t(
-                    "Advance amount is insufficient for this payment",
-                );
-            }
-        }
-
-        if (
-            clearDueData.payment_type === "account_adjustment" &&
-            !clearDueData.account_id
-        ) {
-            errors.account_id = t(
-                "customer.select_account_error",
-                "Please select an account",
-            );
-        }
-
-        if (Object.keys(errors).length > 0) {
-            setClearDueErrors(errors);
-            return;
-        }
-
-        setProcessingClearDue(true);
-
-        router.post(
-            route("clearDue.store", { id: selectedCustomer.id }),
-            clearDueData,
-            {
-                onSuccess: () => {
-                    clearDueModelClose();
-                    setProcessingClearDue(false);
-                },
-                onError: (errors) => {
-                    console.error("Clear due error:", errors);
-                    setClearDueErrors(errors);
-                    setProcessingClearDue(false);
-                },
-            },
-        );
-    };
 
     const handlePaymentInputChange = (e) => {
         const { name, value } = e.target;
@@ -436,7 +377,7 @@ export default function Customers({ customers, filters, accounts }) {
             });
     };
 
-    // Calculate due amount from sales
+    // Calculate due amount from sales (matching controller structure)
     const calculateDueAmount = (sales) => {
         if (!sales || sales.length === 0) return 0;
         return sales.reduce((total, sale) => {
@@ -453,31 +394,10 @@ export default function Customers({ customers, filters, accounts }) {
         }).format(num);
     };
 
-    // Format date
+    // Format date (matching controller format: "D M, Y h:i A")
     const formatDate = (dateString) => {
         if (!dateString) return t("customer.na", "N/A");
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString(
-                locale === "bn" ? "bn-BD" : "en-US",
-                {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                },
-            );
-        } catch (e) {
-            return dateString;
-        }
-    };
-
-    // Format date for filename
-    const formatDateForFilename = () => {
-        const now = new Date();
-        return now.toISOString().split('T')[0] + '_' + 
-               now.getHours() + '-' + 
-               now.getMinutes() + '-' + 
-               now.getSeconds();
+        return dateString; // Already formatted by controller
     };
 
     // Get payment method icon
@@ -508,40 +428,7 @@ export default function Customers({ customers, filters, accounts }) {
         }
     };
 
-    // Quick payment amount buttons
-    const handleQuickAmount = (percentage) => {
-        if (selectedCustomer) {
-            const dueAmount = calculateDueAmount(selectedCustomer.sales) || 0;
-            const amount = Math.round(dueAmount * percentage) / 100;
-            setPaymentData((prev) => ({
-                ...prev,
-                amount: Math.max(0, amount),
-            }));
-        }
-    };
 
-    // Quick clear due amount buttons
-    const handleQuickClearDueAmount = (percentage) => {
-        if (selectedCustomer) {
-            const dueAmount = calculateDueAmount(selectedCustomer.sales) || 0;
-            const amount = Math.round(dueAmount * percentage) / 100;
-            setClearDueData((prev) => ({
-                ...prev,
-                paid_amount: Math.max(0, amount),
-            }));
-        }
-    };
-
-    // Set full payment for clear due
-    const handleFullClearDue = () => {
-        if (selectedCustomer) {
-            const dueAmount = calculateDueAmount(selectedCustomer.sales) || 0;
-            setClearDueData((prev) => ({
-                ...prev,
-                paid_amount: Math.max(0, dueAmount),
-            }));
-        }
-    };
 
     // Get account details
     const getAccountDetails = () => {
@@ -562,63 +449,63 @@ export default function Customers({ customers, filters, accounts }) {
         );
     };
 
-    // Get payment method options for clear due
-    const getPaymentMethodOptions = (customer) => {
-        const options = [
-            {
-                value: "account_adjustment",
-                label: t("customer.account_adjustment", "Account Adjustment"),
-                icon: <Landmark size={16} />,
-            },
-        ];
-
-        // Add advance adjustment option if customer has advance
-        if (customer && parseFloat(customer.advance_amount) > 0) {
-            options.unshift({
-                value: "advance_adjustment",
-                label: t("customer.advance_adjustment", "Advance Adjustment"),
-                icon: <CreditCardIcon size={16} />,
-                description: t(
-                    "customer.use_customer_advance",
-                    "Use customer advance balance",
-                ),
+ 
+    // Fetch all customers for export (matching exportCustomerReport controller)
+    const fetchAllCustomersForExport = async () => {
+        try {
+            const response = await axios.get(route('reports.customer.export'), {
+                params: {
+                    search: localFilters.search,
+                    status: localFilters.status,
+                    date_from: localFilters.date_from,
+                    date_to: localFilters.date_to
+                }
             });
+            
+            console.log(response.data.customers);
+            return response.data.customers;
+        } catch (error) {
+            console.error('Error fetching all customers:', error);
+            toast.error('Failed to fetch all customers data');
+            throw error;
         }
-
-        return options;
     };
 
-    // Prepare data for export
-    const prepareExportData = () => {
-        return customers.data.map(customer => {
+    // Prepare data for export (matching controller data structure)
+    const prepareExportData = (customersData) => {
+        return customersData.map(customer => {
             const dueAmount = calculateDueAmount(customer.sales);
             const customerAccount = getCustomerAccount(customer.account_id);
             
             return {
-                'Name': customer.customer_name,
+                'ID': customer.id,
+                'Customer Name': customer.customer_name,
                 'Phone': customer.phone || 'N/A',
-                'Email': customer.email || 'N/A',
                 'Address': customer.address || 'N/A',
-                'Advance (Tk)': formatCurrency(customer.advance_amount || 0),
-                'Due (Tk)': formatCurrency(dueAmount),
+                'Advance Amount (Tk)': formatCurrency(customer.advance_amount || 0),
+                'Due Amount (Tk)': formatCurrency(dueAmount),
                 'Status': customer.is_active ? 'Active' : 'Inactive',
                 'Default Account': customerAccount?.name || 'N/A',
                 'Sales Count': customer.sales?.length || 0,
-                'Created At': formatDate(customer.created_at)
+                'Created At': customer.created_at
             };
         });
     };
 
     // Download as CSV
-    const downloadCSV = () => {
+    const downloadCSV = async () => {
         try {
             setIsDownloading(true);
-            const exportData = prepareExportData();
             
-            if (exportData.length === 0) {
+            // Fetch all customers using export endpoint
+            const allCustomers = await fetchAllCustomersForExport();
+            
+            if (allCustomers.length === 0) {
                 toast.warning('No data to export');
                 return;
             }
+
+            const exportData = prepareExportData(allCustomers);
 
             const headers = Object.keys(exportData[0]);
             const csvRows = [];
@@ -642,11 +529,11 @@ export default function Customers({ customers, filters, accounts }) {
 
             csvRows.push('');
             csvRows.push('SUMMARY STATISTICS');
-            const totalAdvance = customers.data.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
-            const totalDue = customers.data.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
+            const totalAdvance = allCustomers.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
+            const totalDue = allCustomers.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
             
-            csvRows.push(`Total Customers,${customers.total}`);
-            csvRows.push(`Active Customers,${customers.data.filter(c => c.is_active).length}`);
+            csvRows.push(`Total Customers,${allCustomers.length}`);
+            csvRows.push(`Active Customers,${allCustomers.filter(c => c.is_active).length}`);
             csvRows.push(`Total Advance (Tk),${totalAdvance.toFixed(2)}`);
             csvRows.push(`Total Due (Tk),${totalDue.toFixed(2)}`);
 
@@ -670,15 +557,19 @@ export default function Customers({ customers, filters, accounts }) {
     };
 
     // Download as Excel
-    const downloadExcel = () => {
+    const downloadExcel = async () => {
         try {
             setIsDownloading(true);
-            const exportData = prepareExportData();
             
-            if (exportData.length === 0) {
+            // Fetch all customers using export endpoint
+            const allCustomers = await fetchAllCustomersForExport();
+            
+            if (allCustomers.length === 0) {
                 toast.warning('No data to export');
                 return;
             }
+
+            const exportData = prepareExportData(allCustomers);
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(exportData);
@@ -691,12 +582,12 @@ export default function Customers({ customers, filters, accounts }) {
             ];
             const wsFilters = XLSX.utils.json_to_sheet(filterData);
 
-            const totalAdvance = customers.data.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
-            const totalDue = customers.data.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
+            const totalAdvance = allCustomers.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
+            const totalDue = allCustomers.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
             
             const summaryData = [
-                { 'Metric': 'Total Customers', 'Value': customers.total },
-                { 'Metric': 'Active Customers', 'Value': customers.data.filter(c => c.is_active).length },
+                { 'Metric': 'Total Customers', 'Value': allCustomers.length },
+                { 'Metric': 'Active Customers', 'Value': allCustomers.filter(c => c.is_active).length },
                 { 'Metric': 'Total Advance (Tk)', 'Value': totalAdvance.toFixed(2) },
                 { 'Metric': 'Total Due (Tk)', 'Value': totalDue.toFixed(2) }
             ];
@@ -718,15 +609,19 @@ export default function Customers({ customers, filters, accounts }) {
     };
 
     // Download as PDF
-    const downloadPDF = () => {
+    const downloadPDF = async () => {
         try {
             setIsDownloading(true);
-            const exportData = prepareExportData();
             
-            if (exportData.length === 0) {
+            // Fetch all customers using export endpoint
+            const allCustomers = await fetchAllCustomersForExport();
+            
+            if (allCustomers.length === 0) {
                 toast.warning('No data to export');
                 return;
             }
+
+            const exportData = prepareExportData(allCustomers);
 
             const doc = new jsPDF({
                 orientation: 'landscape',
@@ -757,10 +652,10 @@ export default function Customers({ customers, filters, accounts }) {
             ];
 
             const tableRows = exportData.map(item => [
-                item['Name'].substring(0, 15) + (item['Name'].length > 15 ? '...' : ''),
+                item['Customer Name'].substring(0, 15) + (item['Customer Name'].length > 15 ? '...' : ''),
                 item['Phone'],
-                item['Advance (Tk)'],
-                item['Due (Tk)'],
+                item['Advance Amount (Tk)'],
+                item['Due Amount (Tk)'],
                 item['Status'],
                 item['Default Account'] === 'N/A' ? 'N/A' : item['Default Account'].substring(0, 10)
             ]);
@@ -775,8 +670,8 @@ export default function Customers({ customers, filters, accounts }) {
                 alternateRowStyles: { fillColor: [245, 245, 245] }
             });
 
-            const totalAdvance = customers.data.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
-            const totalDue = customers.data.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
+            const totalAdvance = allCustomers.reduce((sum, c) => sum + parseFloat(c.advance_amount || 0), 0);
+            const totalDue = allCustomers.reduce((sum, c) => sum + calculateDueAmount(c.sales), 0);
             
             const finalY = doc.lastAutoTable.finalY + 10;
             
@@ -786,8 +681,8 @@ export default function Customers({ customers, filters, accounts }) {
             
             doc.setFontSize(10);
             doc.setTextColor(0, 0, 0);
-            doc.text(`Total Customers: ${customers.total}`, 14, finalY + 7);
-            doc.text(`Active Customers: ${customers.data.filter(c => c.is_active).length}`, 14, finalY + 14);
+            doc.text(`Total Customers: ${allCustomers.length}`, 14, finalY + 7);
+            doc.text(`Active Customers: ${allCustomers.filter(c => c.is_active).length}`, 14, finalY + 14);
             doc.text(`Total Advance: ${totalAdvance.toFixed(2)} Tk`, 14, finalY + 21);
             doc.text(`Total Due: ${totalDue.toFixed(2)} Tk`, 14, finalY + 28);
 
@@ -801,8 +696,6 @@ export default function Customers({ customers, filters, accounts }) {
             setIsDownloading(false);
         }
     };
-
-    // const hasActiveFilters = localFilters.search || localFilters.status || localFilters.date_from || localFilters.date_to;
 
     return (
         <div
@@ -949,9 +842,7 @@ export default function Customers({ customers, filters, accounts }) {
                                                         >
                                                             <span>
                                                                 Invoice #
-                                                                {
-                                                                    sale.invoice_no
-                                                                }
+                                                                {sale.invoice_no || sale.id}
                                                             </span>
                                                             <span className="font-mono">
                                                                 ৳
@@ -979,576 +870,6 @@ export default function Customers({ customers, filters, accounts }) {
                                     )}
                             </div>
 
-                            <form onSubmit={handleClearDueSubmit}>
-                                <div className="space-y-6">
-                                    {/* Amount Section */}
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <label className="label-text font-bold text-gray-800 text-sm">
-                                                {t(
-                                                    "customer.amount_to_pay",
-                                                    "Amount to Pay",
-                                                )}{" "}
-                                                *
-                                            </label>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleFullClearDue}
-                                                    className="btn btn-xs btn-primary bg-gray-900 border-gray-900 hover:bg-black hover:border-black"
-                                                    disabled={
-                                                        processingClearDue
-                                                    }
-                                                >
-                                                    {t(
-                                                        "customer.full_payment",
-                                                        "Full",
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="relative">
-                                            <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-600 font-bold text-lg">
-                                                ৳
-                                            </span>
-                                            <input
-                                                type="number"
-                                                name="paid_amount"
-                                                step="0.01"
-                                                min="0.01"
-                                                max={calculateDueAmount(
-                                                    selectedCustomer.sales,
-                                                )}
-                                                value={clearDueData.paid_amount}
-                                                onChange={
-                                                    handleClearDueInputChange
-                                                }
-                                                className="input input-bordered w-full pl-4 py-4 text-lg font-mono border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20 bg-white"
-                                                disabled={processingClearDue}
-                                                required
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                        {/* Quick Amount Buttons */}
-                                        <div className="flex gap-2 mt-3">
-                                            {[25, 50, 75].map((percent) => (
-                                                <button
-                                                    type="button"
-                                                    key={percent}
-                                                    onClick={() =>
-                                                        handleQuickClearDueAmount(
-                                                            percent / 100,
-                                                        )
-                                                    }
-                                                    className="btn btn-xs btn-ghost hover:bg-gray-200 flex items-center gap-1"
-                                                    disabled={
-                                                        processingClearDue
-                                                    }
-                                                >
-                                                    <Percent size={10} />
-                                                    {percent}%
-                                                </button>
-                                            ))}
-                                        </div>
-                                        {clearDueErrors.paid_amount && (
-                                            <div className="text-red-600 text-xs mt-2 flex items-center gap-2 bg-red-50 p-2 rounded-lg border border-red-200">
-                                                <AlertCircle size={12} />
-                                                {clearDueErrors.paid_amount}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Payment Method Selection */}
-                                    <div>
-                                        <label className="label-text font-bold text-gray-800 text-sm mb-3 block">
-                                            {t(
-                                                "customer.payment_method",
-                                                "Payment Method",
-                                            )}{" "}
-                                            *
-                                        </label>
-                                        <div className="grid grid-cols-1 gap-3">
-                                            {getPaymentMethodOptions(
-                                                selectedCustomer,
-                                            ).map((option) => (
-                                                <label
-                                                    key={option.value}
-                                                    className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                                        clearDueData.payment_type ===
-                                                        option.value
-                                                            ? "border-gray-900 bg-gray-50"
-                                                            : "border-gray-200 hover:border-gray-300"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <input
-                                                            type="radio"
-                                                            name="payment_type"
-                                                            value={option.value}
-                                                            checked={
-                                                                clearDueData.payment_type ===
-                                                                option.value
-                                                            }
-                                                            onChange={
-                                                                handleClearDueInputChange
-                                                            }
-                                                            className="radio radio-primary"
-                                                            disabled={
-                                                                processingClearDue
-                                                            }
-                                                        />
-                                                        <div className="flex items-center gap-2">
-                                                            <div
-                                                                className={`p-2 rounded-lg ${
-                                                                    clearDueData.payment_type ===
-                                                                    option.value
-                                                                        ? "bg-gray-900 text-white"
-                                                                        : "bg-gray-100 text-gray-600"
-                                                                }`}
-                                                            >
-                                                                {option.icon}
-                                                            </div>
-                                                            <div>
-                                                                <div className="font-bold text-sm">
-                                                                    {
-                                                                        option.label
-                                                                    }
-                                                                </div>
-                                                                {option.description && (
-                                                                    <div className="text-xs text-gray-500">
-                                                                        {
-                                                                            option.description
-                                                                        }
-                                                                    </div>
-                                                                )}
-                                                                {option.value ===
-                                                                    "advance_adjustment" && (
-                                                                    <div className="text-xs text-green-600 font-bold mt-1">
-                                                                        {t(
-                                                                            "customer.available_advance",
-                                                                            "Available Advance",
-                                                                        )}
-                                                                        : ৳
-                                                                        {formatCurrency(
-                                                                            selectedCustomer.advance_amount ||
-                                                                                0,
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    {option.value ===
-                                                        "advance_adjustment" && (
-                                                        <div className="text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded">
-                                                            ৳
-                                                            {formatCurrency(
-                                                                selectedCustomer.advance_amount ||
-                                                                    0,
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Account Selection (only for account_adjustment) */}
-                                    {clearDueData.payment_type ===
-                                        "account_adjustment" && (
-                                        <div>
-                                            <label className="label-text font-bold text-gray-800 text-sm mb-3 block">
-                                                {t(
-                                                    "customer.payment_account",
-                                                    "Payment Account",
-                                                )}{" "}
-                                                *
-                                            </label>
-                                            <div className="relative">
-                                                <Landmark
-                                                    size={18}
-                                                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500"
-                                                />
-                                                <select
-                                                    name="account_id"
-                                                    value={
-                                                        clearDueData.account_id
-                                                    }
-                                                    onChange={
-                                                        handleClearDueInputChange
-                                                    }
-                                                    className="select select-bordered w-full pl-4 border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20 bg-white appearance-none"
-                                                    disabled={
-                                                        processingClearDue
-                                                    }
-                                                    required
-                                                >
-                                                    <option value="">
-                                                        {t(
-                                                            "customer.select_account",
-                                                            "Select an account",
-                                                        )}
-                                                    </option>
-                                                    {accounts.map((account) => (
-                                                        <option
-                                                            key={account.id}
-                                                            value={account.id}
-                                                        >
-                                                            {account.name} - ৳
-                                                            {formatCurrency(
-                                                                account.current_balance,
-                                                            )}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <ChevronRight
-                                                    size={18}
-                                                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 rotate-90"
-                                                />
-                                            </div>
-                                            {clearDueErrors.account_id && (
-                                                <div className="text-red-600 text-xs mt-2 flex items-center gap-2 bg-red-50 p-2 rounded-lg border border-red-200">
-                                                    <AlertCircle size={12} />
-                                                    {clearDueErrors.account_id}
-                                                </div>
-                                            )}
-
-                                            {/* Selected Account Details */}
-                                            {clearDueData.account_id &&
-                                                accounts.find(
-                                                    (acc) =>
-                                                        acc.id.toString() ===
-                                                        clearDueData.account_id.toString(),
-                                                ) && (
-                                                    <div className="mt-3 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-2">
-                                                                {getAccountIcon(
-                                                                    accounts.find(
-                                                                        (acc) =>
-                                                                            acc.id.toString() ===
-                                                                            clearDueData.account_id.toString(),
-                                                                    ).type,
-                                                                )}
-                                                                <span className="font-bold text-sm">
-                                                                    {
-                                                                        accounts.find(
-                                                                            (
-                                                                                acc,
-                                                                            ) =>
-                                                                                acc.id.toString() ===
-                                                                                clearDueData.account_id.toString(),
-                                                                        ).name
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                            <div className="text-sm font-mono text-green-700">
-                                                                ৳
-                                                                {formatCurrency(
-                                                                    accounts.find(
-                                                                        (acc) =>
-                                                                            acc.id.toString() ===
-                                                                            clearDueData.account_id.toString(),
-                                                                    )
-                                                                        .current_balance,
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                        </div>
-                                    )}
-
-                                    {/* Transaction Reference */}
-                                    <div>
-                                        <label className="label-text font-bold text-gray-800 text-sm mb-2 block">
-                                            {t(
-                                                "customer.transaction_reference",
-                                                "Transaction Reference",
-                                            )}
-                                        </label>
-                                        <div className="relative">
-                                            <FileText
-                                                size={18}
-                                                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500"
-                                            />
-                                            <input
-                                                type="text"
-                                                name="txn_ref"
-                                                value={clearDueData.txn_ref}
-                                                onChange={
-                                                    handleClearDueInputChange
-                                                }
-                                                className="input input-bordered w-full pl-12 py-3.5 border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20 bg-white font-mono text-sm"
-                                                disabled={processingClearDue}
-                                                placeholder="Auto-generated reference"
-                                            />
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            {t(
-                                                "customer.auto_generated_ref",
-                                                "Auto-generated transaction reference",
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Date and Notes */}
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="label-text font-bold text-gray-800 text-sm mb-2 block">
-                                                {t(
-                                                    "customer.payment_date",
-                                                    "Payment Date",
-                                                )}
-                                            </label>
-                                            <div className="relative">
-                                                <Calendar
-                                                    size={18}
-                                                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500"
-                                                />
-                                                <input
-                                                    type="date"
-                                                    name="payment_date"
-                                                    value={
-                                                        clearDueData.payment_date
-                                                    }
-                                                    onChange={
-                                                        handleClearDueInputChange
-                                                    }
-                                                    className="input input-bordered w-full pl-12 py-3.5 border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20 bg-white"
-                                                    disabled={
-                                                        processingClearDue
-                                                    }
-                                                />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="label-text font-bold text-gray-800 text-sm mb-2 block">
-                                                {t("customer.notes", "Notes")}
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="notes"
-                                                value={clearDueData.notes}
-                                                onChange={
-                                                    handleClearDueInputChange
-                                                }
-                                                className="input input-bordered w-full py-3.5 border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20 bg-white"
-                                                placeholder={t(
-                                                    "customer.payment_notes",
-                                                    "Payment notes",
-                                                )}
-                                                disabled={processingClearDue}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Payment Summary */}
-                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 shadow-sm">
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <div className="p-1.5 bg-blue-100 rounded-lg">
-                                                <Info
-                                                    size={18}
-                                                    className="text-blue-700"
-                                                />
-                                            </div>
-                                            <h6 className="font-bold text-gray-900">
-                                                {t(
-                                                    "customer.payment_summary",
-                                                    "Payment Summary",
-                                                )}
-                                            </h6>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between items-center pb-3 border-b border-blue-200">
-                                                <div className="text-sm text-gray-600">
-                                                    {t(
-                                                        "customer.payment_amount",
-                                                        "Payment Amount",
-                                                    )}
-                                                </div>
-                                                <div className="font-mono font-bold text-xl text-gray-900">
-                                                    ৳
-                                                    {formatCurrency(
-                                                        clearDueData.paid_amount ||
-                                                            0,
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex justify-between items-center">
-                                                <div className="text-sm text-gray-600">
-                                                    {t(
-                                                        "customer.payment_method",
-                                                        "Payment Method",
-                                                    )}
-                                                </div>
-                                                <div className="font-bold text-gray-900">
-                                                    {clearDueData.payment_type ===
-                                                    "advance_adjustment"
-                                                        ? t(
-                                                              "customer.advance_adjustment",
-                                                              "Advance Adjustment",
-                                                          )
-                                                        : clearDueData.payment_type ===
-                                                            "account_adjustment"
-                                                          ? t(
-                                                                "customer.account_adjustment",
-                                                                "Account Adjustment",
-                                                            )
-                                                          : t(
-                                                                "customer.cash",
-                                                                "Cash",
-                                                            )}
-                                                </div>
-                                            </div>
-
-                                            {clearDueData.payment_type ===
-                                                "account_adjustment" &&
-                                                clearDueData.account_id && (
-                                                    <>
-                                                        <div className="my-3 border-t border-blue-200 pt-3">
-                                                            <div className="flex justify-between items-center">
-                                                                <div className="text-sm text-gray-600">
-                                                                    {t(
-                                                                        "customer.selected_account",
-                                                                        "Selected Account",
-                                                                    )}
-                                                                </div>
-                                                                <div className="font-bold text-gray-900">
-                                                                    {
-                                                                        accounts.find(
-                                                                            (
-                                                                                a,
-                                                                            ) =>
-                                                                                a.id.toString() ===
-                                                                                clearDueData.account_id.toString(),
-                                                                        )?.name
-                                                                    }
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="bg-white p-3 rounded-lg border border-blue-200">
-                                                            <div className="flex justify-between items-center">
-                                                                <div className="text-sm font-bold text-gray-800">
-                                                                    {t(
-                                                                        "customer.balance_after_payment",
-                                                                        "Balance After Payment",
-                                                                    )}
-                                                                </div>
-                                                                <div className="font-mono font-bold text-xl text-blue-700">
-                                                                    ৳
-                                                                    {formatCurrency(
-                                                                        (accounts.find(
-                                                                            (
-                                                                                a,
-                                                                            ) =>
-                                                                                a.id.toString() ===
-                                                                                clearDueData.account_id.toString(),
-                                                                        )
-                                                                            ?.current_balance ||
-                                                                            0) -
-                                                                            (clearDueData.paid_amount ||
-                                                                                0),
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </>
-                                                )}
-
-                                            {clearDueData.payment_type ===
-                                                "advance_adjustment" && (
-                                                <div className="bg-white p-3 rounded-lg border border-green-200">
-                                                    <div className="flex justify-between items-center">
-                                                        <div className="text-sm font-bold text-gray-800">
-                                                            {t(
-                                                                "customer.advance_after_payment",
-                                                                "Advance After Payment",
-                                                            )}
-                                                        </div>
-                                                        <div className="font-mono font-bold text-xl text-green-700">
-                                                            ৳
-                                                            {formatCurrency(
-                                                                (selectedCustomer.advance_amount ||
-                                                                    0) -
-                                                                    (clearDueData.paid_amount ||
-                                                                        0),
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Errors */}
-                                    {clearDueErrors.submit && (
-                                        <div className="bg-red-50 text-red-700 border border-red-200 p-4 rounded-xl">
-                                            <div className="flex items-center gap-3">
-                                                <AlertCircle
-                                                    size={20}
-                                                    className="text-red-600"
-                                                />
-                                                <div>
-                                                    <div className="font-bold">
-                                                        {t(
-                                                            "customer.payment_error",
-                                                            "Payment Error",
-                                                        )}
-                                                    </div>
-                                                    <div className="text-sm mt-1">
-                                                        {clearDueErrors.submit}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div className="flex gap-3 mt-8 pt-6 border-t border-gray-200">
-                                    <button
-                                        type="button"
-                                        onClick={clearDueModelClose}
-                                        className="btn btn-ghost flex-1 hover:bg-gray-100 text-gray-700 border border-gray-300"
-                                        disabled={processingClearDue}
-                                    >
-                                        {t("customer.cancel", "Cancel")}
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="btn btn-warning flex-1 bg-orange-600 border-orange-600 hover:bg-orange-700 hover:border-orange-700 text-white"
-                                        disabled={
-                                            processingClearDue ||
-                                            !clearDueData.paid_amount ||
-                                            (clearDueData.payment_type ===
-                                                "account_adjustment" &&
-                                                !clearDueData.account_id)
-                                        }
-                                    >
-                                        {processingClearDue ? (
-                                            <>
-                                                <span className="loading loading-spinner loading-sm"></span>
-                                                {t(
-                                                    "customer.processing",
-                                                    "Processing...",
-                                                )}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <CheckCircle size={18} />
-                                                {t(
-                                                    "customer.clear_due",
-                                                    "Clear Due",
-                                                )}
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                            </form>
                         </div>
                     </div>
                 </div>
@@ -2093,24 +1414,12 @@ export default function Customers({ customers, filters, accounts }) {
 
             {/* Page Header */}
             <PageHeader
-                title={t("customer.title", "Customer Management")}
+                title={t("customer.customer_report_title", "Customer Management")}
                 subtitle={t(
-                    "customer.subtitle",
+                    "customer.customer_report_subtitle",
                     "Manage your all customers from here.",
                 )}
             >
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => {
-                            customerForm.reset();
-                            setModel(true);
-                        }}
-                        className="btn bg-[#1e4d2b] hover:bg-[#1a4326] text-white btn-sm flex items-center gap-2"
-                    >
-                        <Plus size={16} />
-                        <span>{t("customer.add_customer", "Add Customer")}</span>
-                    </button>
-                </div>
             </PageHeader>
 
             {/* Collapsible Filter Card */}
@@ -2122,7 +1431,7 @@ export default function Customers({ customers, filters, accounts }) {
                     <div className="flex items-center gap-2">
                         <Filter size={18} className="text-[#1e4d2b]" />
                         <h3 className="text-lg font-semibold text-neutral">Filters</h3>
-                        {hasActiveFilters && (
+                        {hasActiveFilters() && (
                             <span className="badge badge-sm bg-[#1e4d2b] text-white ml-2">Active</span>
                         )}
                     </div>
@@ -2219,7 +1528,7 @@ export default function Customers({ customers, filters, accounts }) {
                         </div>
 
                         {/* Active Filters Display */}
-                        {hasActiveFilters && (
+                        {hasActiveFilters() && (
                             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-600">
                                 <span className="font-medium">Active Filters:</span>
                                 {localFilters.search && (
@@ -2229,7 +1538,7 @@ export default function Customers({ customers, filters, accounts }) {
                                 )}
                                 {localFilters.status && (
                                     <span className="badge badge-outline badge-sm">
-                                        Status: {localFilters.status}
+                                        Status: {localFilters.status === 'active' ? 'Active' : localFilters.status === 'inactive' ? 'Inactive' : localFilters.status}
                                     </span>
                                 )}
                                 {localFilters.date_from && (
@@ -2267,64 +1576,6 @@ export default function Customers({ customers, filters, accounts }) {
                 </div>
             </div>
 
-            {/* Summary Stats - Responsive */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4">
-                <div className="bg-gray-900 text-white rounded-box p-3">
-                    <p className="text-xs uppercase tracking-wider font-bold text-gray-300 mb-1">
-                        {t("customer.total_customers", "Total Customers")}
-                    </p>
-                    <div className="flex items-center justify-between">
-                        <p className="text-lg md:text-xl font-black">{customers.total}</p>
-                        <Users size={16} className="text-gray-400" />
-                    </div>
-                </div>
-                <div className="bg-green-50 border border-green-200 rounded-box p-3">
-                    <p className="text-xs uppercase tracking-wider font-bold text-green-700 mb-1">
-                        {t("customer.active_customers", "Active Customers")}
-                    </p>
-                    <div className="flex items-center justify-between">
-                        <p className="text-lg md:text-xl font-black text-green-700">
-                            {customers.data.filter((c) => c.is_active).length}
-                        </p>
-                        <CheckCircle size={16} className="text-green-500" />
-                    </div>
-                </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-box p-3">
-                    <p className="text-xs uppercase tracking-wider font-bold text-amber-700 mb-1">
-                        {t("customer.total_advance", "Total Advance")}
-                    </p>
-                    <div className="flex items-center justify-between">
-                        <p className="text-lg md:text-xl font-black text-amber-700">
-                            ৳{formatCurrency(
-                                customers.data.reduce(
-                                    (sum, c) =>
-                                        sum + parseFloat(c.advance_amount || 0),
-                                    0,
-                                ),
-                            )}
-                        </p>
-                        <TrendingUp size={16} className="text-amber-500" />
-                    </div>
-                </div>
-                <div className="bg-red-50 border border-red-200 rounded-box p-3">
-                    <p className="text-xs uppercase tracking-wider font-bold text-red-700 mb-1">
-                        {t("customer.total_due", "Total Due")}
-                    </p>
-                    <div className="flex items-center justify-between">
-                        <p className="text-lg md:text-xl font-black text-red-700">
-                            ৳{formatCurrency(
-                                customers.data.reduce(
-                                    (sum, c) =>
-                                        sum + calculateDueAmount(c.sales),
-                                    0,
-                                ),
-                            )}
-                        </p>
-                        <TrendingDown size={16} className="text-red-500" />
-                    </div>
-                </div>
-            </div>
-
             {/* Customers Table - Responsive */}
             <div className="print:hidden">
                 <div className="overflow-x-auto -mx-2">
@@ -2339,7 +1590,6 @@ export default function Customers({ customers, filters, accounts }) {
                                             <th className="py-2 px-3">{t("customer.contact_info", "Contact Info")}</th>
                                             <th className="py-2 px-3">{t("customer.address", "Address")}</th>
                                             <th className="py-2 px-3">{t("customer.financial_status", "Financial Status")}</th>
-                                            <th className="py-2 px-3 text-right">{t("customer.command", "Command")}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="font-bold text-sm text-gray-700">
@@ -2375,7 +1625,7 @@ export default function Customers({ customers, filters, accounts }) {
                                                                 <div className="flex items-center gap-2 text-gray-900 uppercase text-xs">
                                                                     <MapPin size={12} className="text-blue-600" />
                                                                     <span className="line-clamp-2">
-                                                                        {customer.address.substring(0, 30)}...
+                                                                        {customer.address}
                                                                     </span>
                                                                 </div>
                                                             ) : (
@@ -2411,57 +1661,6 @@ export default function Customers({ customers, filters, accounts }) {
                                                                     ৳{formatCurrency(dueAmount)}
                                                                 </span>
                                                             </div>
-                                                            <div className="mt-1 space-y-1">
-                                                                <button
-                                                                    onClick={() => handleAdvancePayment(customer)}
-                                                                    className="btn btn-xs btn-success w-full flex items-center justify-center gap-1"
-                                                                >
-                                                                    <DollarSign size={12} />
-                                                                    {t("customer.add_advance", "Add Advance")}
-                                                                </button>
-                                                                {hasDue && (
-                                                                    <button
-                                                                        onClick={() => handleClearDue(customer)}
-                                                                        className="btn btn-xs btn-warning w-full flex items-center justify-center gap-1"
-                                                                    >
-                                                                        <Receipt size={12} />
-                                                                        {t("customer.clear_due", "Clear Due")}
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-2 px-3 text-right">
-                                                        <div className="flex justify-end gap-1">
-                                                            <Link
-                                                                href={route("customer.show", { id: customer.id })}
-                                                                className="btn btn-ghost btn-square btn-xs p-1 hover:bg-blue-600 hover:text-white text-blue-600"
-                                                                title={t("customer.view_details", "View Details")}
-                                                            >
-                                                                <Eye size={12} />
-                                                            </Link>
-
-                                                            <button
-                                                                disabled={editProcessing}
-                                                                onClick={() => handleCustomerEdit(customer.id)}
-                                                                className="btn btn-ghost btn-square btn-xs p-1 hover:bg-amber-600 hover:text-white text-amber-600"
-                                                                title={t("customer.edit", "Edit")}
-                                                            >
-                                                                <Edit size={12} />
-                                                            </button>
-
-                                                            <Link
-                                                                href={route("customer.del", { id: customer.id })}
-                                                                onClick={(e) => {
-                                                                    if (!confirm(t("customer.delete_confirmation", "Are you sure you want to delete this customer?"))) {
-                                                                        e.preventDefault();
-                                                                    }
-                                                                }}
-                                                                className="btn btn-ghost btn-square btn-xs p-1 text-red-400 hover:bg-red-600 hover:text-white"
-                                                                title={t("customer.delete", "Delete")}
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </Link>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -2604,6 +1803,64 @@ export default function Customers({ customers, filters, accounts }) {
                         <Pagination data={customers} />
                     </div>
                 )}
+            </div>
+
+            {/* Summary Stats - Responsive */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mt-4">
+                <div className="bg-gray-900 text-white rounded-box p-3">
+                    <p className="text-xs uppercase tracking-wider font-bold text-gray-300 mb-1">
+                        {t("customer.total_customers", "Total Customers")}
+                    </p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-lg md:text-xl font-black">{customers.total}</p>
+                        <Users size={16} className="text-gray-400" />
+                    </div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-box p-3">
+                    <p className="text-xs uppercase tracking-wider font-bold text-green-700 mb-1">
+                        {t("customer.active_customers", "Active Customers")}
+                    </p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-lg md:text-xl font-black text-green-700">
+                            {customers.data.filter((c) => c.is_active).length}
+                        </p>
+                        <CheckCircle size={16} className="text-green-500" />
+                    </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-box p-3">
+                    <p className="text-xs uppercase tracking-wider font-bold text-amber-700 mb-1">
+                        {t("customer.total_advance", "Total Advance")}
+                    </p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-lg md:text-xl font-black text-amber-700">
+                            ৳{formatCurrency(
+                                customers.data.reduce(
+                                    (sum, c) =>
+                                        sum + parseFloat(c.advance_amount || 0),
+                                    0,
+                                ),
+                            )}
+                        </p>
+                        <TrendingUp size={16} className="text-amber-500" />
+                    </div>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-box p-3">
+                    <p className="text-xs uppercase tracking-wider font-bold text-red-700 mb-1">
+                        {t("customer.total_due", "Total Due")}
+                    </p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-lg md:text-xl font-black text-red-700">
+                            ৳{formatCurrency(
+                                customers.data.reduce(
+                                    (sum, c) =>
+                                        sum + calculateDueAmount(c.sales),
+                                    0,
+                                ),
+                            )}
+                        </p>
+                        <TrendingDown size={16} className="text-red-500" />
+                    </div>
+                </div>
             </div>
 
             {/* Add/Edit Customer Modal */}
@@ -2776,8 +2033,8 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
-                                                // min="0"
+                                                step="0.01"
+                                                min="0"
                                                 value={
                                                     customerForm.data
                                                         .advance_amount
@@ -2786,8 +2043,8 @@ export default function Customers({ customers, filters, accounts }) {
                                                     customerForm.setData(
                                                         "advance_amount",
                                                         parseFloat(
-                                                            e.target.value
-                                                        ) 
+                                                            e.target.value,
+                                                        ) || 0,
                                                     )
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${customerForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}
@@ -2825,8 +2082,8 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
-                                                // min="0"
+                                                step="0.01"
+                                                min="0"
                                                 value={
                                                     customerForm.data.due_amount
                                                 }
@@ -2834,8 +2091,8 @@ export default function Customers({ customers, filters, accounts }) {
                                                     customerForm.setData(
                                                         "due_amount",
                                                         parseFloat(
-                                                            e.target.value
-                                                        ) 
+                                                            e.target.value,
+                                                        ) || 0,
                                                     )
                                                 }
                                                 className={`input input-bordered w-full pl-4 py-3 ${customerForm.data.id ? "bg-gray-100 cursor-not-allowed text-gray-500" : "border-gray-300 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"}`}

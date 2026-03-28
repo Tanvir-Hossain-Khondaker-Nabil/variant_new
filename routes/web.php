@@ -54,6 +54,8 @@ use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\InvestmentReturnController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SystemController;
+use App\Http\Controllers\ReportController;
+
 
 // Guest routes
 Route::middleware('guest')->controller(AuthController::class)->group(function () {
@@ -746,6 +748,85 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
     Route::get('/purchases_local_product', [PurchaseController::class, 'list_index'])
         ->middleware('permission:purchase.list_index')
         ->name('purchase.list_index');
+
+    
+    // All reports route will be here 
+    Route::controller(ReportController::class)->prefix('reports')->group(function () {
+        Route::get('/sales', 'salesReport')
+        ->name('reports.sales');
+        Route::get('/sales/export', 'exportSalesReport')
+        ->name('reports.sales.export');
+
+
+        Route::get('/sales/items', 'salesItemReport')
+        ->name('reports.sales.items');
+         Route::get('/sales/items/export', 'exportSalesItemReport')
+        ->name('reports.sales-items.export');
+
+
+        Route::get('/purchases', 'purchaseReport')
+        ->name('reports.purchase');
+        Route::get('/purchases/export', 'exportPurchaseReport')
+        ->name('reports.purchase.export');
+
+
+        Route::get('/purchases/items', 'purchaseItemsReport')
+        ->name('reports.purchase.items');
+            Route::get('/purchases/items/export', 'exportPurchaseItemsReport')
+        ->name('reports.purchase-items.export');
+
+
+        Route::get('/customer', 'customerReport')
+        ->name('reports.customer');
+            Route::get('/customer/export', 'exportCustomerReport')
+        ->name('reports.customer.export');
+
+
+        Route::get('/supplier', 'supplierReport')
+        ->name('reports.supplier');
+        Route::get('/supplier/export', 'exportSupplierReport')
+        ->name('reports.supplier.export');
+
+
+        Route::get('/transaction', 'transactionReport')
+        ->name('reports.transaction');
+        Route::get('/transaction/export', 'exportTransactionReport')
+        ->name('reports.transaction.export');
+
+
+        Route::get('/account', 'accountReport')
+        ->name('reports.account');
+        Route::get('/reports/account/export', 'exportAccountReport')
+        ->name('reports.account.export');
+
+
+        Route::get('/expense', 'expenseReport')
+        ->name('reports.expense');
+        Route::get('/reports/expense/export', 'exportExpenseReport')
+        ->name('reports.expense.export');
+
+
+        Route::get('/product', 'productReport')
+        ->name('reports.product');
+        Route::get('/reports/product/export', 'exportProductReport')
+        ->name('reports.product.export');
+
+
+        Route::get('/sales-return', 'salesReturnReport')
+        ->name('reports.sales-return');
+        Route::get('/reports/sales-return/export', 'exportSalesReturnsReport')
+        ->name('reports.sales-return.export');
+
+        
+        Route::get('/purchase-return', 'purchaseReturnReport')
+        ->name('reports.purchase-return');
+        Route::get('/reports/purchase-return/export', 'exportPurchaseReturnsReport')
+        ->name('reports.purchase-return.export');
+
+        Route::get('/damages', 'damageReport')
+        ->name('reports.damage');
+    });
+
 
 
     // Investors

@@ -53,7 +53,7 @@ export default function AddSale({
     const [pickupItems, setPickupItems] = useState([]);
     const [productSearch, setProductSearch] = useState("");
     const [filteredProducts, setFilteredProducts] = useState([]);
-    const [vatRate, setVatRate] = useState(0);
+    const [vatRate, setVatRate] = useState(null);
     const [discountType, setDiscountType] = useState("percentage");
     const [flatDiscount, setFlatDiscount] = useState(null);
     const [percentageDiscount, setPercentageDiscount] = useState(null);
@@ -107,8 +107,8 @@ export default function AddSale({
     const [pickupSupplierId, setPickupSupplierId] = useState("");
     const [pickupVariants, setPickupVariants] = useState([]);
     const [pickupQuantity, setPickupQuantity] = useState(1);
-    const [pickupUnitPrice, setPickupUnitPrice] = useState(0);
-    const [pickupSalePrice, setPickupSalePrice] = useState(0);
+    const [pickupUnitPrice, setPickupUnitPrice] = useState(null);
+    const [pickupSalePrice, setPickupSalePrice] = useState(null);
 
     // BARCODE SCANNER
     const barcodeRef = useRef(null);
@@ -2043,8 +2043,8 @@ export default function AddSale({
                                         className="input input-bordered"
                                         value={pickupUnitPrice}
                                         onChange={(e) => setPickupUnitPrice(e.target.value)}
-                                        min="0"
-                                        step="0.01"
+                                        // min="0"
+                                        // step="0.01"
                                     />
                                 </div>
                                 <div className="form-control">
@@ -2054,8 +2054,8 @@ export default function AddSale({
                                         className="input input-bordered"
                                         value={pickupSalePrice}
                                         onChange={(e) => setPickupSalePrice(e.target.value)}
-                                        min="0"
-                                        step="0.01"
+                                        // min="0"
+                                        // step="0.01"
                                     />
                                 </div>
                             </div>

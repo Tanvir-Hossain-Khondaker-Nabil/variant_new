@@ -45,6 +45,16 @@ class Stock extends Model
 
     use BelongsToTenant;
 
+    public function purchaseItems()
+    {
+        return $this->hasMany(PurchaseItem::class);
+    }
+
+    public function saleItems()
+    {
+        return $this->hasMany(SaleItem::class);
+    }
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);

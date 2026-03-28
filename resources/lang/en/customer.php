@@ -20,6 +20,8 @@ return [
     'mobile_banking' => 'Mobile Banking',
     'bank_name' => 'Bank Name',
     'cash' => 'Cash',
+    'enter_due_amount' => 'Enter Due Amount',
+    'enter_advance_amount' => 'Enter Advance Amount',
     'bank' => 'Bank',
     'update_customer_info' => 'Update Customer Information',
     'balance_after_payment' => 'Balance After Payment',

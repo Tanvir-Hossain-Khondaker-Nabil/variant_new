@@ -28,7 +28,6 @@ import {
     Table as TableIcon,
     FileSpreadsheet,
     FileJson,
-    Pen,
 } from "lucide-react";
 import React, { Fragment, useMemo, useState, useEffect } from "react";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -38,7 +37,7 @@ import autoTable from 'jspdf-autotable';
 import { toast } from "react-toastify";
 import axios from 'axios';
 
-export default function Product({ product, filters, brands, categories }) {
+export default function Product({ product, filters }) {
     const { auth } = usePage().props;
     const { t, locale } = useTranslation();
     const [showFilters, setShowFilters] = useState(false);
@@ -65,11 +64,9 @@ export default function Product({ product, filters, brands, categories }) {
 
     const safeProducts = product?.data || [];
 
-    // Form state for filters - matching backend expectations
+    // Form state for filters
     const { data, setData } = useForm({
         search: filters?.search || "",
-        brand_id: filters?.brand_id || "",
-        category_id: filters?.category_id || "",
         start_date: filters?.start_date || "",
         end_date: filters?.end_date || "",
     });
@@ -77,8 +74,6 @@ export default function Product({ product, filters, brands, categories }) {
     // Local filter state for UI
     const [localFilters, setLocalFilters] = useState({
         search: filters?.search || "",
-        brand_id: filters?.brand_id || "",
-        category_id: filters?.category_id || "",
         start_date: filters?.start_date || "",
         end_date: filters?.end_date || "",
     });
@@ -87,8 +82,6 @@ export default function Product({ product, filters, brands, categories }) {
     useEffect(() => {
         setLocalFilters({
             search: data.search,
-            brand_id: data.brand_id,
-            category_id: data.category_id,
             start_date: data.start_date,
             end_date: data.end_date,
         });
@@ -97,15 +90,13 @@ export default function Product({ product, filters, brands, categories }) {
     const handleFilter = (e) => {
         e?.preventDefault();
 
-        // Build query params - only include non-empty values
+        // Build query params
         const params = {};
         if (data.search) params.search = data.search;
-        if (data.brand_id) params.brand_id = data.brand_id;
-        if (data.category_id) params.category_id = data.category_id;
         if (data.start_date) params.start_date = data.start_date;
         if (data.end_date) params.end_date = data.end_date;
 
-        router.get(route("product.list"), params, {
+        router.get(route("reports.product"), params, {
             preserveScroll: true,
             preserveState: true,
             replace: true,
@@ -117,15 +108,9 @@ export default function Product({ product, filters, brands, categories }) {
     };
 
     const clearFilters = () => {
-        setData({ 
-            search: "", 
-            brand_id: "", 
-            category_id: "", 
-            start_date: "", 
-            end_date: "" 
-        });
+        setData({ search: "", start_date: "", end_date: "" });
 
-        router.get(route("product.list"), {}, {
+        router.get(route("reports.product"), {}, {
             preserveScroll: true,
             preserveState: true,
             replace: true,
@@ -139,11 +124,7 @@ export default function Product({ product, filters, brands, categories }) {
 
     // Check if any filter is active
     const hasActiveFilters = () => {
-        return localFilters.search || 
-               localFilters.brand_id || 
-               localFilters.category_id || 
-               localFilters.start_date || 
-               localFilters.end_date;
+        return localFilters.search || localFilters.start_date || localFilters.end_date;
     };
 
     const handleKeyPress = (e) => {
@@ -224,11 +205,9 @@ export default function Product({ product, filters, brands, categories }) {
     // Fetch all products for export
     const fetchAllProductsForExport = async () => {
         try {
-            const response = await axios.get(route('product.export'), {
+            const response = await axios.get(route('reports.product.export'), {
                 params: {
                     search: localFilters.search,
-                    brand_id: localFilters.brand_id,
-                    category_id: localFilters.category_id,
                     start_date: localFilters.start_date,
                     end_date: localFilters.end_date
                 }
@@ -272,7 +251,6 @@ export default function Product({ product, filters, brands, categories }) {
                         'Product Name': productItem.name,
                         'Product Code': productItem.product_no || 'N/A',
                         'Category': productItem.category?.name || 'N/A',
-                        'Brand': productItem.brand?.name || 'N/A',
                         'Variant': formatVariantDisplay(variant),
                         'Stock': variant?.stock?.quantity || 0,
                         'Price': variant?.stock?.sale_price || 0,
@@ -289,7 +267,6 @@ export default function Product({ product, filters, brands, categories }) {
                     'Product Name': productItem.name,
                     'Product Code': productItem.product_no || 'N/A',
                     'Category': productItem.category?.name || 'N/A',
-                    'Brand': productItem.brand?.name || 'N/A',
                     'Variant': 'N/A',
                     'Stock': 0,
                     'Price': 0,
@@ -367,8 +344,6 @@ export default function Product({ product, filters, brands, categories }) {
             csvRows.push('');
             csvRows.push('FILTER INFORMATION');
             csvRows.push(`Search,${localFilters.search || 'None'}`);
-            csvRows.push(`Brand,${brands?.find(b => b.id == localFilters.brand_id)?.name || 'None'}`);
-            csvRows.push(`Category,${categories?.find(c => c.id == localFilters.category_id)?.name || 'None'}`);
             csvRows.push(`Date From,${localFilters.start_date || 'None'}`);
             csvRows.push(`Date To,${localFilters.end_date || 'None'}`);
 
@@ -423,8 +398,6 @@ export default function Product({ product, filters, brands, categories }) {
             // Add filter information sheet
             const filterData = [
                 { 'Filter': 'Search', 'Value': localFilters.search || 'None' },
-                { 'Filter': 'Brand', 'Value': brands?.find(b => b.id == localFilters.brand_id)?.name || 'None' },
-                { 'Filter': 'Category', 'Value': categories?.find(c => c.id == localFilters.category_id)?.name || 'None' },
                 { 'Filter': 'Date From', 'Value': localFilters.start_date || 'None' },
                 { 'Filter': 'Date To', 'Value': localFilters.end_date || 'None' }
             ];
@@ -492,19 +465,11 @@ export default function Product({ product, filters, brands, categories }) {
             let filterY = 29;
             if (localFilters.search) {
                 doc.text(`Search: ${localFilters.search}`, 14, filterY);
-                filterY += 5;
-            }
-            if (localFilters.brand_id) {
-                doc.text(`Brand: ${brands?.find(b => b.id == localFilters.brand_id)?.name || 'None'}`, 14, filterY);
-                filterY += 5;
-            }
-            if (localFilters.category_id) {
-                doc.text(`Category: ${categories?.find(c => c.id == localFilters.category_id)?.name || 'None'}`, 14, filterY);
-                filterY += 5;
+                filterY += 6;
             }
             if (localFilters.start_date || localFilters.end_date) {
                 doc.text(`Date Range: ${formatDisplayDate(localFilters.start_date) || 'Start'} to ${formatDisplayDate(localFilters.end_date) || 'End'}`, 14, filterY);
-                filterY += 5;
+                filterY += 6;
             }
 
             // Table columns
@@ -512,7 +477,6 @@ export default function Product({ product, filters, brands, categories }) {
                 'Product Name',
                 'Code',
                 'Category',
-                'Brand',
                 'Variant',
                 'Stock',
                 'Price',
@@ -520,14 +484,13 @@ export default function Product({ product, filters, brands, categories }) {
             ];
 
             const tableRows = exportData.slice(0, 50).map(item => [ // Limit to 50 rows for PDF
-                item['Product Name'].substring(0, 15) + (item['Product Name'].length > 15 ? '...' : ''),
-                item['Product Code'].substring(0, 8),
-                item['Category'].substring(0, 8),
-                item['Brand'].substring(0, 8),
-                item['Variant'].substring(0, 10) + (item['Variant'].length > 10 ? '...' : ''),
+                item['Product Name'].substring(0, 20) + (item['Product Name'].length > 20 ? '...' : ''),
+                item['Product Code'].substring(0, 10),
+                item['Category'].substring(0, 10),
+                item['Variant'].substring(0, 15) + (item['Variant'].length > 15 ? '...' : ''),
                 item['Stock'].toString(),
                 formatCurrency(item['Price']),
-                item['Barcodes'].substring(0, 10) + (item['Barcodes'].length > 10 ? '...' : '')
+                item['Barcodes'].substring(0, 15) + (item['Barcodes'].length > 15 ? '...' : '')
             ]);
 
             autoTable(doc, {
@@ -597,8 +560,6 @@ export default function Product({ product, filters, brands, categories }) {
             csvRows.push('');
             csvRows.push('FILTER INFORMATION (PAGINATED DATA - CURRENT PAGE ONLY)');
             csvRows.push(`Search,${localFilters.search || 'None'}`);
-            csvRows.push(`Brand,${brands?.find(b => b.id == localFilters.brand_id)?.name || 'None'}`);
-            csvRows.push(`Category,${categories?.find(c => c.id == localFilters.category_id)?.name || 'None'}`);
             csvRows.push(`Date From,${localFilters.start_date || 'None'}`);
             csvRows.push(`Date To,${localFilters.end_date || 'None'}`);
 
@@ -1220,7 +1181,7 @@ export default function Product({ product, filters, brands, categories }) {
                     </button>
 
                     {/* Download Dropdown */}
-                    {/* <div className="dropdown dropdown-end d-none">
+                    <div className="dropdown dropdown-end">
                         <button
                             className="btn bg-green-600 text-white btn-sm"
                             disabled={isDownloading}
@@ -1284,11 +1245,7 @@ export default function Product({ product, filters, brands, categories }) {
                                 </button>
                             </li>
                         </ul>
-                    </div> */}
-
-                    <button onClick={() => router.visit(route("product.add"))} className="btn bg-[#1e4d2b] text-white btn-sm">
-                        <Plus size={15} /> {t("product.add_new", "Add New")}
-                    </button>
+                    </div>
 
                     {selectedCount > 0 && (
                         <>
@@ -1304,12 +1261,12 @@ export default function Product({ product, filters, brands, categories }) {
                 </div>
             </PageHeader>
 
-            {/* Collapsible Filter Card - Matching the exact design from reference */}
+            {/* Collapsible Filter Card */}
             <div className="bg-base-100 rounded-box border border-base-content/5 mb-6 overflow-hidden">
                 {showFilters && (
                     <div className="p-4 border-t border-base-content/5">
                         <form onSubmit={handleFilter}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {/* Search */}
                                 <div className="form-control">
                                     <label className="label">
@@ -1331,48 +1288,6 @@ export default function Product({ product, filters, brands, categories }) {
                                             className="input input-sm input-bordered w-full"
                                         />
                                     </div>
-                                </div>
-
-                                {/* Brand Filter */}
-                                <div className="form-control">
-                                    <label className="label">
-                                        <span className="label-text font-medium">
-                                            {t('product.brand', 'Brand')}
-                                        </span>
-                                    </label>
-                                    <select
-                                        value={data.brand_id}
-                                        onChange={(e) => handleFilterChange("brand_id", e.target.value)}
-                                        className="select select-sm select-bordered w-full"
-                                    >
-                                        <option value="">{t('product.all_brands', 'All Brands')}</option>
-                                        {brands?.map((brand) => (
-                                            <option key={brand.id} value={brand.id}>
-                                                {brand.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Category Filter */}
-                                <div className="form-control">
-                                    <label className="label">
-                                        <span className="label-text font-medium">
-                                            {t('product.category', 'Category')}
-                                        </span>
-                                    </label>
-                                    <select
-                                        value={data.category_id}
-                                        onChange={(e) => handleFilterChange("category_id", e.target.value)}
-                                        className="select select-sm select-bordered w-full"
-                                    >
-                                        <option value="">{t('product.all_categories', 'All Categories')}</option>
-                                        {categories?.map((category) => (
-                                            <option key={category.id} value={category.id}>
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
                                 </div>
 
                                 {/* Start Date */}
@@ -1427,34 +1342,6 @@ export default function Product({ product, filters, brands, categories }) {
                                             <button
                                                 onClick={() => {
                                                     setData('search', '');
-                                                    handleFilter();
-                                                }}
-                                                className="ml-1 hover:text-red-600"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </span>
-                                    )}
-                                    {localFilters.brand_id && (
-                                        <span className="badge badge-outline badge-sm flex items-center gap-1">
-                                            {t('product.brand', 'Brand')}: {brands?.find(b => b.id == localFilters.brand_id)?.name}
-                                            <button
-                                                onClick={() => {
-                                                    setData('brand_id', '');
-                                                    handleFilter();
-                                                }}
-                                                className="ml-1 hover:text-red-600"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </span>
-                                    )}
-                                    {localFilters.category_id && (
-                                        <span className="badge badge-outline badge-sm flex items-center gap-1">
-                                            {t('product.category', 'Category')}: {categories?.find(c => c.id == localFilters.category_id)?.name}
-                                            <button
-                                                onClick={() => {
-                                                    setData('category_id', '');
                                                     handleFilter();
                                                 }}
                                                 className="ml-1 hover:text-red-600"
@@ -1528,26 +1415,18 @@ export default function Product({ product, filters, brands, categories }) {
 
                                 <th>{t("product.product_name", "Product Name")}</th>
                                 <th className="w-[140px]">{t("product.category", "Category")}</th>
-                                <th className="w-[140px]">{t("product.brand", "Brand")}</th>
+                                <th className="w-[140px]">{t("product.attributes", "Attributes")}</th>
                                 <th className="w-[140px]">{t("product.total_stock", "Total Stock")}</th>
                                 <th className="w-[360px]">{t("product.variants", "Variants")}</th>
-                                <th className="w-[360px]">{t("product.barcodes", "Barcodes")}</th>
-
-                                {/* ✅ Sticky RIGHT: actions */}
-                                <th className={`${stickyRightTh} ${stickyShadowRight} w-[120px] text-center`}>
-                                    {t("product.actions", "Actions")}
-                                </th>
                             </tr>
                         </thead>
 
                         <tbody>
                             {safeProducts.map((productItem) => {
                                 const totalStock = calculateTotalStock(productItem);
+                                const attributesCount = getUniqueAttributesCount(productItem);
                                 const variantsCount = productItem?.variants?.length || 0;
                                 const isExpanded = !!expandedProducts[productItem.id];
-
-                                const totalBarcodes =
-                                    productItem?.variants?.reduce((total, v) => total + getVariantBarcodes(v, productItem).length, 0) || 0;
 
                                 return (
                                     <Fragment key={productItem.id}>
@@ -1576,16 +1455,24 @@ export default function Product({ product, filters, brands, categories }) {
                                             </td>
 
                                             <td>{productItem.category?.name || t("product.not_available", "N/A")}</td>
-                                            <td>{productItem.brand?.name || t("product.not_available", "N/A")}</td>
+
+                                            <td>
+                                                <div className="flex items-center gap-2">
+                                                    <Tag size={14} className="text-purple-600" />
+                                                    <span className="text-sm">
+                                                        {attributesCount}{" "}
+                                                        {attributesCount === 1 ? t("product.attribute", "attribute") : t("product.attributes_plural", "attributes")}
+                                                    </span>
+                                                </div>
+                                            </td>
 
                                             <td>
                                                 <div className="flex items-center gap-2">
                                                     <Package size={16} className="text-blue-600" />
                                                     <div>
                                                         <div
-                                                            className={`font-bold text-lg ${
-                                                                totalStock === 0 ? "text-error" : totalStock < 10 ? "text-warning" : "text-success"
-                                                            }`}
+                                                            className={`font-bold text-lg ${totalStock === 0 ? "text-error" : totalStock < 10 ? "text-warning" : "text-success"
+                                                                }`}
                                                         >
                                                             {totalStock}
                                                         </div>
@@ -1617,9 +1504,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                             return (
                                                                 <div
                                                                     key={variant.id}
-                                                                    className={`border p-2 rounded text-xs ${
-                                                                        hasAttributes ? "border-primary bg-[#1e4d2b] text-white" : "border-dashed border-neutral"
-                                                                    }`}
+                                                                    className={`border p-2 rounded text-xs ${hasAttributes ? "border-primary bg-[#1e4d2b] text-white" : "border-dashed border-neutral"
+                                                                        }`}
                                                                 >
                                                                     <div className="flex justify-between items-start">
                                                                         <div className="flex-1">
@@ -1658,156 +1544,12 @@ export default function Product({ product, filters, brands, categories }) {
                                                     )}
                                                 </div>
                                             </td>
-
-                                            {/* Barcodes column */}
-                                            <td className="max-w-[360px]">
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Barcode size={14} className="text-blue-600" />
-                                                        <span className="text-sm font-bold">
-                                                            {totalBarcodes} {totalBarcodes === 1 ? "barcode" : "barcodes"}
-                                                        </span>
-                                                    </div>
-
-                                                    {totalBarcodes > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {productItem?.variants?.map((variant) => {
-                                                                const barcodes = getVariantBarcodes(variant, productItem);
-                                                                if (!barcodes.length) return null;
-
-                                                                const variantName = formatVariantDisplay(variant);
-
-                                                                return (
-                                                                    <div key={variant.id} className="border rounded-lg p-2 bg-white">
-                                                                        <div className="space-y-1">
-                                                                            {barcodes.map((b, idx) => {
-                                                                                const isSelected = selectedBarcodeMap.has(b.barcode);
-
-                                                                                const rowForBulk = {
-                                                                                    barcode: b.barcode,
-                                                                                    batch_no: b.batch_no,
-                                                                                    quantity: b.quantity,
-                                                                                    purchase_price: b.purchase_price,
-                                                                                    sale_price: b.sale_price,
-                                                                                    warehouse_id: b.warehouse_id,
-                                                                                    variant_id: b.variant_id,
-                                                                                    productName: productItem.name,
-                                                                                    variantName,
-                                                                                };
-
-                                                                                return (
-                                                                                    <div
-                                                                                        key={`${variant.id}-${b.barcode}-${idx}`}
-                                                                                        className={`flex items-center justify-between p-2 rounded text-xs border ${
-                                                                                            isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
-                                                                                        }`}
-                                                                                    >
-                                                                                        <div className="flex items-center gap-2 min-w-0">
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => toggleSelectBarcode(rowForBulk)}
-                                                                                                className="btn btn-ghost btn-xs"
-                                                                                                title={isSelected ? "Unselect" : "Select"}
-                                                                                            >
-                                                                                                {isSelected ? (
-                                                                                                    <CheckSquare size={16} className="text-primary" />
-                                                                                                ) : (
-                                                                                                    <Square size={16} className="text-gray-400" />
-                                                                                                )}
-                                                                                            </button>
-
-                                                                                            <div className="min-w-0">
-                                                                                                <div className="font-mono truncate max-w-[220px]">{b.barcode}</div>
-                                                                                                <div className="text-[10px] text-gray-500">
-                                                                                                    Batch: {b.batch_no || "N/A"} • Qty: {b.quantity || 0}
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        <div className="flex gap-1 shrink-0">
-                                                                                            <button onClick={() => copyBarcode(b.barcode)} className="btn btn-xs btn-ghost" title="Copy Barcode">
-                                                                                                <Copy size={10} />
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-gray-500 italic">No barcodes assigned</span>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* ✅ Sticky RIGHT Actions cell */}
-                                            <td className={`${stickyRightTd} ${stickyShadowRight} text-center`}>
-                                                <div className="flex items-center justify-center gap-2">
-                                                    {/* Desktop icons */}
-                                                    <div className="hidden md:flex items-center gap-2">
-                                                        <Link
-                                                            href={route("product.add", { id: productItem.id })}
-                                                            className="btn btn-xs btn-warning"
-                                                            title={t("product.edit", "Edit Product")}
-                                                        >
-                                                            <Pen size={10} />
-                                                        </Link>
-
-                                                        <Link
-                                                            href={route("product.del", { id: productItem.id })}
-                                                            onClick={(e) => {
-                                                                if (
-                                                                    !confirm(
-                                                                        t(
-                                                                            "product.delete_confirmation",
-                                                                            "Are you sure you want to delete this product? This action cannot be undone."
-                                                                        )
-                                                                    )
-                                                                ) {
-                                                                    e.preventDefault();
-                                                                }
-                                                            }}
-                                                            className="btn btn-xs btn-error"
-                                                            title={t("product.delete", "Delete Product")}
-                                                        >
-                                                            <Trash2 size={10} />
-                                                        </Link>
-                                                    </div>
-
-                                                    {/* Mobile dropdown */}
-                                                    <div className="md:hidden dropdown dropdown-end">
-                                                        <button type="button" className="btn btn-xs btn-ghost" title="Actions">
-                                                            <MoreVertical size={16} />
-                                                        </button>
-                                                        <ul className="dropdown-content z-[60] menu p-2 shadow bg-base-100 rounded-box w-44 border border-gray-100">
-                                                            <li>
-                                                                <Link href={route("product.add", { id: productItem.id })}>
-                                                                    <Pen size={14} /> Edit
-                                                                </Link>
-                                                            </li>
-                                                            <li>
-                                                                <Link
-                                                                    href={route("product.del", { id: productItem.id })}
-                                                                    onClick={(e) => {
-                                                                        if (!confirm("Delete this product?")) e.preventDefault();
-                                                                    }}
-                                                                >
-                                                                    <Trash2 size={14} /> Delete
-                                                                </Link>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </td>
                                         </tr>
 
                                         {/* Expanded variants row */}
                                         {isExpanded && (
                                             <tr>
-                                                <td colSpan="8" className="bg-gray-50 p-4">
+                                                <td colSpan="6" className="bg-gray-50 p-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                         {productItem?.variants?.map((variant) => {
                                                             const barcodes = getVariantBarcodes(variant, productItem);
@@ -1856,9 +1598,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                                                     return (
                                                                                         <div
                                                                                             key={`${variant.id}-${barcodeData.barcode}-${index}`}
-                                                                                            className={`flex items-center justify-between p-2 rounded text-xs border ${
-                                                                                                isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
-                                                                                            }`}
+                                                                                            className={`flex items-center justify-between p-2 rounded text-xs border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
+                                                                                                }`}
                                                                                         >
                                                                                             <div className="flex items-center gap-2">
                                                                                                 <button

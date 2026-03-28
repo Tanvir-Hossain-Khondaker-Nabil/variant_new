@@ -1847,7 +1847,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
         <div className="flex flex-wrap gap-2 items-center">
           <Link
             href={route("purchase.create")}
-            className={`btn btn-sm border-none font-black uppercase tracking-widest text-[10px] ${isShadowUser ? "bg-amber-500 text-black hover:bg-amber-600" : "bg-primary text-white hover:bg-primary"
+            className={`btn btn-sm border-none font-black uppercase tracking-widest text-[10px] ${isShadowUser ? "bg-amber-500 text-black hover:bg-amber-600" : "bg-[#266D39] text-white hover:bg-[#266D39]"
               }`}
           >
             <Plus size={15} /> {t("purchase.new_purchase", "New Entry")}
@@ -1862,9 +1862,9 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
           onClick={toggleFilters}
         >
           <div className="flex items-center gap-2">
-            <Filter size={18} className="text-primary" />
+            <Filter size={18} className="text-[#266D39]" />
             <h3 className="text-lg font-semibold text-neutral">Filters</h3>
-            {hasActiveFilters() && <span className="badge badge-sm bg-primary text-white ml-2">Active</span>}
+            {hasActiveFilters() && <span className="badge badge-sm bg-[#266D39] text-white ml-2">Active</span>}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1881,7 +1881,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                 e.stopPropagation();
                 applyFilters();
               }}
-              className="btn bg-primary text-white btn-sm"
+              className="btn bg-[#266D39] text-white btn-sm"
             >
               <Search size={14} />
               Search
@@ -2024,7 +2024,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
       <div className="overflow-x-auto rounded-xl border border-gray-100">
         {safePurchases.length > 0 ? (
           <table className="table w-full">
-            <thead className={`text-white uppercase text-[10px] tracking-widest ${isShadowUser ? "bg-amber-500" : "bg-primary"}`}>
+            <thead className={`text-white uppercase text-[10px] tracking-widest ${isShadowUser ? "bg-amber-500" : "bg-[#266D39]"}`}>
               <tr>
                 <th className="py-4 w-[40px]">
                   <button
@@ -2058,7 +2058,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                 const isPartial = displayPaymentStatus === "partial";
 
                 return (
-                  <tr key={purchase.id} className={`hover:bg-gray-50 border-b border-gray-50 transition-colors ${isSelected ? "bg-primary/5" : ""}`}>
+                  <tr key={purchase.id} className={`hover:bg-gray-50 border-b border-gray-50 transition-colors ${isSelected ? "bg-[#266D39]" : ""}`}>
                     <td>
                       <button type="button" onClick={() => toggleSelectOne(purchase.id)} className="btn btn-ghost btn-xs" title={isSelected ? "Unselect" : "Select"}>
                         {isSelected ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} className="text-gray-400" />}
@@ -2070,7 +2070,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                     <td>
                       <p className="font-black text-gray-900 font-mono uppercase tracking-tighter leading-none mb-1">#{purchase.purchase_no}</p>
                       <span className="text-[10px] flex items-center gap-1 text-gray-400 font-black uppercase tracking-widest">
-                        <Calendar size={10} /> {formatDate(purchase.purchase_date)}
+                        <Calendar size={10} /> {formatDate(purchase.purchase_date ?? purchase.created_at)}
                       </span>
                     </td>
 
@@ -2125,13 +2125,13 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                                 id: purchase.id,
                                 type: "purchase",
                               })}
-                              className="btn btn-xs btn-primary"
+                              className="btn btn-xs btn-[#266D39]"
                             >
                               View Installments
                             </Link>
                           ) : (
                             <div className="mt-2">
-                              <button onClick={() => openPaymentModal(purchase)} className="btn btn-xs btn-primary w-full flex items-center justify-center gap-1">
+                              <button onClick={() => openPaymentModal(purchase)} className="btn btn-xs text-[#fff] rounded bg-[#266D39] w-full flex items-center justify-center gap-1">
                                 <CreditCard size={12} />
                                 Pay Now
                               </button>
@@ -2164,11 +2164,11 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                           <Edit size={16} />
                         </Link>
 
-                        {auth?.role === "admin" && (
+                        {/* {auth?.role === "admin" && ( */}
                           <button onClick={() => handleDelete(purchase.id)} className="btn btn-ghost btn-square btn-xs text-red-400 hover:bg-red-600 hover:text-white" title="Delete Purchase">
                             <Trash2 size={16} />
                           </button>
-                        )}
+                        {/* )} */}
                       </div>
                     </td>
                   </tr>

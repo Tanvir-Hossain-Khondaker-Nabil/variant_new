@@ -9,6 +9,14 @@ return [
     'no_products_found' => 'No products found!',
     'add_new' => 'Add New',
     'edit' => 'Edit',
+    'search' => 'Search',
+    'end_date' => 'End Date',
+    'start_date' => 'Start Date',
+    'download_report' => 'Download Report',
+    'csv_format' => 'Csv Format',
+    'apply_filters' => 'Apply Filter',
+    'excel_format' => 'Excel Format',
+    'pdf_format' => 'Pdf Format',
     'delete' => 'Delete',
     'delete_confirmation' => 'Are you sure you want to delete this product? This action cannot be undone.',
     'photo' => 'Photo',
@@ -21,6 +29,11 @@ return [
     'barcodes' => 'Barcodes',
     'warranty' => 'Warranty',
     'months' => 'months',
+    'filter_options' => 'Filter Options',
+    'filters' => 'Filter',
+    'all_categories' => 'All Categories',
+    'all_brands' => 'All Brands',
+    'clear_filters' => 'Clear Filters',
 
     // Table headers
     'product_code' => 'Product Code',
@@ -68,7 +81,10 @@ return [
     'enter_product_name' => 'Enter product name',
     'enter_product_code' => 'Enter product code',
     'enter_description' => 'Enter product description',
-    
+    'active_filters' => 'Active Filters',
+    'clear' => 'Clear',
+    'active' => 'Active',
+
     // Brand field
     'pick_brand' => '--Pick a Brand--',
     

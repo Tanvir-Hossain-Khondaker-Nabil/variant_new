@@ -127,13 +127,13 @@ class PurchaseController extends Controller
         $query->when(
             $request->filled(['date_from', 'date_to']),
             fn($q) =>
-            $q->whereBetween('created_at', [
+            $q->whereBetween('purchase_date', [
                 $request->date_from,
                 $request->date_to
             ])
         );
 
-        $purchases = $query->paginate(10)->withQueryString();
+        $purchases = $query->paginate(20)->withQueryString();
 
         // Transform purchases
         $purchases->getCollection()->transform(function ($purchase) use ($isShadowUser) {
@@ -206,33 +206,50 @@ class PurchaseController extends Controller
             ->LocalOnly()
             ->with(['supplier', 'warehouse', 'items.product', 'items.variant']);
 
-        if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('purchase_no', 'like', '%' . $request->search . '%')
-                    ->orWhereHas('supplier', function ($q) use ($request) {
-                        $q->where('name', 'like', '%' . $request->search . '%')
-                            ->orWhere('company', 'like', '%' . $request->search . '%');
-                    })
-                    ->orWhereHas('warehouse', function ($q) use ($request) {
-                        $q->where('name', 'like', '%' . $request->search . '%')
-                            ->orWhere('code', 'like', '%' . $request->search . '%');
-                    })
-                    ->orWhereHas('items', function ($q) use ($request) {
-                        $q->whereHas('stock', function ($q) use ($request) {
-                            $q->where('barcode', 'like', '%' . $request->search . '%')
-                                ->orWhere('batch_no', 'like', '%' . $request->search . '%');
-                        });
-                    });
-            });
-        }
+        // Search filter
+        $query->when($request->filled('search'), function ($q) use ($request) {
+            $search = $request->search;
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
+            $q->where('purchase_no', 'like', "%{$search}%")
+                ->orWhereHas(
+                    'supplier',
+                    fn($q) =>
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('company', 'like', "%{$search}%")
+                )
+                ->orWhereHas(
+                    'warehouse',
+                    fn($q) =>
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                )
+                ->orWhereHas(
+                    'items.stock',
+                    fn($q) =>
+                    $q->where('barcode', 'like', "%{$search}%")
+                        ->orWhere('batch_no', 'like', "%{$search}%")
+                );
+        });
 
-        if ($request->filled('date')) {
-            $query->whereDate('purchase_date', $request->date);
-        }
+        // Other filters
+        $query->when(
+            $request->filled('status'),
+            fn($q) => $q->where('status', $request->status)
+        );
+
+        $query->when(
+            $request->filled('date'),
+            fn($q) => $q->whereDate('purchase_date', $request->date)
+        );
+
+        $query->when(
+            $request->filled(['date_from', 'date_to']),
+            fn($q) =>
+            $q->whereBetween('purchase_date', [
+                $request->date_from,
+                $request->date_to
+            ])
+        );
 
         $purchases = $query->paginate(10)->withQueryString();
 
@@ -297,6 +314,7 @@ class PurchaseController extends Controller
             'accounts' => Account::where('is_active', true)->get()
         ]);
     }
+
 
     public function create()
     {
@@ -1025,6 +1043,7 @@ class PurchaseController extends Controller
     }
 
 
+
     public function destroy($id)
     {
         DB::beginTransaction();
@@ -1033,20 +1052,20 @@ class PurchaseController extends Controller
 
             // Restore account balance if payment exists
             $payment = Payment::where('purchase_id', $purchase->id)->first();
+
             if ($payment && $payment->account_id) {
                 $account = Account::find($payment->account_id);
                 if ($account) {
-                    $paymentAmount = abs($payment->getSignedAmount());
+                    $paymentAmount = abs($payment->amount);
                     $account->updateBalance($paymentAmount, 'deposit');
                 }
             }
 
             // Delete stock batch-wise
             foreach ($purchase->items as $item) {
-                $stock = Stock::where('warehouse_id', $purchase->warehouse_id)
-                    ->where('product_id', $item->product_id)
+                $stock = Stock::where('product_id', $item->product_id)
+                    ->orWhere('warehouse_id', $purchase->warehouse_id)
                     ->where('variant_id', $item->variant_id)
-                    ->where('batch_no', 'LIKE', 'PO-' . $item->id . '-%')
                     ->first();
 
                 if ($stock)
