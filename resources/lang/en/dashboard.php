@@ -32,6 +32,21 @@ return [
     'sales_for_range' => 'Sales for Range',
     'profit_for_range' => 'Profit for Range',
 
+// newwwww
+    'total_active_subscriptions' => 'Total Active Subscription',
+'current_active_subscription_count' => 'Currently active subscriptions',
+
+'subscription_value' => 'Subscription Value',
+'subscription_plan_value' => 'Active subscription plan value',
+
+'total_subscription_profit' => 'Total Subscription Profit',
+'subscription_received_amount' => 'Completed subscription received amount',
+
+'user_total_deposit' => 'User Total Deposit',
+'total_user_deposit_balance' => 'All user deposit balance',
+
+
+
     // Charts & Analytics
     'sales_performance' => 'Sales Performance',
     'order_analytics' => 'Order Analytics',
@@ -41,6 +56,13 @@ return [
     'returned' => 'Returned',
     'revenue' => 'Revenue',
     'orders' => 'Orders',
+    'profit_trend' => 'Profit Trend',
+'profit_trend_monthly' => 'Profit Trend (Monthly)',
+'profit_trend_range' => 'Profit Trend (Date Range)',
+
+'subscriber_analysis' => 'Subscriber Analysis',
+'monthly_subscriber_overview' => 'Monthly Subscriber Overview',
+'monthly_profit_graph' => 'Monthly Profit Graph',
 
     // Performance Indicators
     'profit_margin' => 'Profit Margin',
@@ -466,4 +488,16 @@ return [
     'due' => 'Due',
     'prev' => 'Previous',
     'active' => 'Active',
+
+    // User Stats Section
+'user_statistics' => 'User Statistics',
+'user_stats_sales' => 'Sales',
+'user_stats_expense' => 'Total Expense',
+'user_stats_inventory' => 'Inventory Value',
+'user_stats_profit' => 'Net Profit',
+'user_stats_products' => 'Total Products',
+'user_stats_thumbnails' => 'Thumbnails',
+'user_stats_account' => 'Account Value',
+'user_stats_customers' => 'Total Customers',
+'select_user' => 'Select User',
 ];

@@ -1,23 +1,25 @@
 import { Head, router } from "@inertiajs/react";
 import {
-  TrendingUp,
-  DollarSign,
-  Package,
-  Users,
-  CheckCircle2,
-  FileText,
   BarChart3,
-  Plus,
-  MoreHorizontal,
-  Calendar,
-  ShoppingBag,
   CalendarRange,
-  X,
+  CheckCircle2,
+  DollarSign,
+  FileText,
+  MoreHorizontal,
+  Package,
+  Plus,
+  ShoppingBag,
+  TrendingUp,
+  Users,
+  X
 } from "lucide-react";
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../hooks/useTranslation";
 
 export default function Dashboard({
+   users = [],
+  selectedUserId = null,
+  selectedUserStats = null,
   totalSales = 0,
   totalPaid = 0,
   totalDue = 0,
@@ -26,9 +28,52 @@ export default function Dashboard({
   totalExpense = 0,
   dashboardData = {},
   isShadowUser = false,
+  
+
+
+
+    isSuperAdmin = false,
+  isAdmin = false,
+  permissions = {},
 }) {
   const { t, locale } = useTranslation();
   const [loading, setLoading] = useState(false);
+
+const [selectedUser, setSelectedUser] = useState(selectedUserId || "");
+
+
+const {
+  plansView = false,
+  subscriptionsView = false,
+  usersView = false,
+  depositsView = false,
+} = permissions;
+
+
+
+
+console.log("==== Dashboard Auth Info ====");
+console.log("isSuperAdmin:", isSuperAdmin);
+console.log("isAdmin:", isAdmin);
+console.log("plansView:", plansView);
+console.log("subscriptionsView:", subscriptionsView);
+console.log("usersView:", usersView);
+console.log("depositsView:", depositsView);
+
+const handleUserChange = (e) => {
+  const userId = e.target.value;
+  setSelectedUser(userId);
+
+  router.reload({
+    data: {
+      user_id: userId,
+      timeRange: range,
+      date_from: dateFrom || null,
+      date_to: dateTo || null,
+    },
+    preserveScroll: true,
+  });
+};
 
   // ✅ Extract date range from backend response
   const {
@@ -61,6 +106,11 @@ export default function Dashboard({
     buyersThisPeriod = 0,
     conversionRate = 0,
 
+    totalActiveSubscriptions = 0,
+subscriptionValue = 0,
+totalSubscriptionProfit = 0,
+userTotalDeposit = 0,
+
     inventoryValue = 0,
     lowStockItems = 0,
     outOfStockItems = 0,
@@ -72,7 +122,8 @@ export default function Dashboard({
     donutPercentages = { completed: 0, processing: 0, returned: 0 },
 
     salesSeries = { labels: [], values: [] },
-
+profitSeries = { labels: [], values: [] },
+subscriberSeries = { labels: [], values: [] },
     topProducts = [],
     recentActivities = [],
   } = dashboardData;
@@ -185,6 +236,8 @@ export default function Dashboard({
   const isCustomRangeActive = dateFrom && dateTo;
 
   // ------------------ chart data ------------------
+  const activeSeries = isSuperAdmin ? profitSeries : salesSeries;
+
   const labels = salesSeries?.labels || [];
   const values = (salesSeries?.values || []).map((v) => Number(v || 0));
   const totalSeriesValue = useMemo(() => values.reduce((a, b) => a + b, 0), [values]);
@@ -279,8 +332,44 @@ export default function Dashboard({
   const paidInPeriod = Number(periodPaid || 0);
   const dueInPeriod = Number(periodDue || 0);
 
-  const quickStats = [
-    {
+
+console.log("isSuperAdmin:", isSuperAdmin);
+
+  const quickStats = isSuperAdmin? [
+
+      {
+  title: t("dashboard.total_active_subscriptions", "Total Active Subscription"),
+  value: Number(totalActiveSubscriptions).toLocaleString(),
+  change: 0,
+  icon: <CheckCircle2 className="w-5 h-5" />,
+  description: t("dashboard.current_active_subscription_count", "Currently active subscriptions"),
+},
+{
+  title: t("dashboard.subscription_value", "Subscription Value"),
+  value: `৳${formatCurrency(subscriptionValue)}`,
+  change: 0,
+  icon: <DollarSign className="w-5 h-5" />,
+  description: t("dashboard.subscription_plan_value", "Active subscription plan value"),
+},
+{
+  title: t("dashboard.total_subscription_profit", "Total Profit Subscription"),
+  value: `৳${formatCurrency(totalSubscriptionProfit)}`,
+  change: 0,
+  icon: <TrendingUp className="w-5 h-5" />,
+  description: t("dashboard.subscription_received_amount", "Completed subscription received amount"),
+},
+{
+  title: t("dashboard.user_total_deposit", "User Total Deposit"),
+  value: `৳${formatCurrency(userTotalDeposit)}`,
+  change: 0,
+  icon: <Users className="w-5 h-5" />,
+  description: t("dashboard.total_user_deposit_balance", "All user deposit balance"),
+},
+
+
+
+  ] :[
+{
       title: t("dashboard.sales", "Sales"),
       value: `৳${formatCurrency(periodSales)}`,
       change: salesGrowth,
@@ -314,8 +403,82 @@ export default function Dashboard({
       change: profitMargin,
       icon: <DollarSign className="w-5 h-5" />,
       description: t("dashboard.profit_margin", "profit margin"),
-    },
-  ];
+    }
+  ] 
+
+  
+
+const superAdmin = [
+  {
+    title: t("dashboard.sales", "Sales"),
+    value: `৳${formatCurrency(periodSales)}`,
+    sub: isCustomRangeActive
+      ? t("dashboard.date_range", "Date range")
+      : t("dashboard.vs_previous_period", "vs previous period"),
+    icon: <TrendingUp className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.total_expense", "Total Expense"),
+    value: `৳${formatCurrency(totalexpense)}`,
+    sub: t("dashboard.buyers_in_period", `${buyersThisPeriod} buyers`),
+    icon: <TrendingUp className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.inventory_value", "Inventory Value"),
+    value:
+      Number(inventoryValue) >= 1000000
+        ? `৳${(Number(inventoryValue) / 1000000).toFixed(1)}M`
+        : `৳${formatCurrency(inventoryValue)}`,
+    sub: `${lowStockItems} low, ${outOfStockItems} out`,
+    icon: <Package className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.net_profit", "Net Profit"),
+    value: `৳${formatCurrency(netProfitPeriod)}`,
+    sub: t("dashboard.profit_margin", "profit margin"),
+    icon: <DollarSign className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+];
+
+
+
+
+
+const admin = [
+  {
+    title: isCustomRangeActive
+      ? t("dashboard.sales_for_range", "Sales for Range")
+      : t("dashboard.period_sales", "Period Sales"),
+    value: `৳${formatCurrency(periodSales)}`,
+    sub: `${t("dashboard.prev", "Prev")}: ৳${formatCurrency(prevPeriodSales)}`,
+    icon: <BarChart3 className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.invoice_due", "Invoice Due (All Time)"),
+    value: `৳${formatCurrency(totalDue)}`,
+    sub: `${t("dashboard.paid", "Paid")}: ৳${formatCurrency(totalPaid)}`,
+    icon: <FileText className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.net_profit", "Net Profit"),
+    value: `৳${formatCurrency(netProfitPeriod)}`,
+    sub: `${t("dashboard.purchase_cost", "Purchase Cost")}: ৳${formatCurrency(
+      purchaseCostPeriod
+    )}`,
+    icon: <ShoppingBag className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+  {
+    title: t("dashboard.customers", "Customers Overview"),
+    value: Number(totalCustomers).toLocaleString(),
+    sub: `${t("dashboard.active", "Active")}: ${Number(
+      activeCustomers
+    ).toLocaleString()}`,
+    icon: <Users className="w-16 h-16 opacity-10 rotate-12" />,
+  },
+];
+  const stats = isSuperAdmin ? superAdmin: admin;
+
+
 
   const donut = {
     completed: Number(donutPercentages?.completed || 0),
@@ -324,20 +487,36 @@ export default function Dashboard({
   };
 
   const getChartTitle = () => {
-    if (isCustomRangeActive) return t("dashboard.sales_trend_range", "Sales Trend (Date Range)");
+  if (isSuperAdmin) {
+    if (isCustomRangeActive) return t("dashboard.profit_trend_range", "Profit Trend (Date Range)");
     return range === "year"
-      ? t("dashboard.sales_trend_monthly", "Sales Trend (Monthly)")
-      : t("dashboard.sales_trend", "Sales Trend");
-  };
+      ? t("dashboard.profit_trend_monthly", "Profit Trend (Monthly)")
+      : t("dashboard.profit_trend", "Profit Trend");
+  }
+
+  if (isCustomRangeActive) return t("dashboard.sales_trend_range", "Sales Trend (Date Range)");
+  return range === "year"
+    ? t("dashboard.sales_trend_monthly", "Sales Trend (Monthly)")
+    : t("dashboard.sales_trend", "Sales Trend");
+};
 
   const getChartSubTitle = () => {
+  if (isSuperAdmin) {
     if (isCustomRangeActive) {
-      return t("dashboard.daily_data_for_range", `Daily data from ${dateFrom} to ${dateTo}`);
+      return t("dashboard.daily_profit_data_for_range", `Daily profit data from ${dateFrom} to ${dateTo}`);
     }
     return range === "year"
-      ? t("dashboard.smooth_monthly_hint", "Smooth monthly graph (Jan–Dec)")
-      : t("dashboard.simple_hint", "Clean line chart for selected range");
-  };
+      ? t("dashboard.monthly_profit_graph", "Monthly profit graph")
+      : t("dashboard.profit_graph_selected_range", "Profit graph for selected range");
+  }
+
+  if (isCustomRangeActive) {
+    return t("dashboard.daily_data_for_range", `Daily data from ${dateFrom} to ${dateTo}`);
+  }
+  return range === "year"
+    ? t("dashboard.smooth_monthly_hint", "Smooth monthly graph (Jan–Dec)")
+    : t("dashboard.simple_hint", "Clean line chart for selected range");
+};
 
   const getRangeDisplayText = () => {
     if (isCustomRangeActive) {
@@ -602,9 +781,11 @@ export default function Dashboard({
                   >
                     <div className="font-black text-slate-800">{hoverPoint.label}</div>
                     <div className="text-slate-600">
-                      {t("dashboard.revenue", "Revenue")}:{" "}
-                      <span className="font-black text-[#1e4d2b]">৳{formatCurrency(hoverPoint.v)}</span>
-                    </div>
+  {isSuperAdmin
+    ? t("dashboard.profit", "Profit")
+    : t("dashboard.revenue", "Revenue")}:{" "}
+  <span className="font-black text-[#1e4d2b]">৳{formatCurrency(hoverPoint.v)}</span>
+</div>
                   </div>
                 )}
               </div>
@@ -648,52 +829,116 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* -------- Purchase Analytics (Donut) -------- */}
-        <div className="bg-white p-6 lg:p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h3 className="text-slate-800 font-black text-lg">
-                {t("dashboard.purchase_analytics", "Purchase Analytics")}
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                {isCustomRangeActive
-                  ? t("dashboard.orders_for_range", `Orders for selected range`)
-                  : t("dashboard.completed_processing_returned", "Completed / Processing / Returned")}
-              </p>
-            </div>
-          </div>
+       {/* -------- Purchase Analytics / Subscriber Analysis -------- */}
+<div className="bg-white p-6 lg:p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
+  <div className="flex items-center justify-between mb-2">
+    <div>
+      <h3 className="text-slate-800 font-black text-lg">
+        {isSuperAdmin
+          ? t("dashboard.subscriber_analysis", "Subscriber Analysis")
+          : t("dashboard.purchase_analytics", "Purchase Analytics")}
+      </h3>
+      <p className="text-xs text-slate-500 mt-1">
+        {isSuperAdmin
+          ? t("dashboard.monthly_subscriber_overview", "Monthly subscriber overview")
+          : isCustomRangeActive
+            ? t("dashboard.orders_for_range", `Orders for selected range`)
+            : t("dashboard.completed_processing_returned", "Completed / Processing / Returned")}
+      </p>
+    </div>
+  </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-around flex-1 gap-8 mt-6">
-            <Donut
-              completed={donut.completed}
-              processing={donut.processing}
-              returned={donut.returned}
-              total={orderAnalytics?.totalOrders ?? 0}
-              centerLabel={t("dashboard.total_purchases", "Total Purchases")}
-            />
+  {isSuperAdmin ? (
+    <div className="mt-6">
+      <div className="grid grid-cols-12 gap-3 items-end h-72">
+        {(subscriberSeries?.values || []).map((value, index) => {
+          const maxSubscriber = Math.max(...(subscriberSeries?.values || [1]), 1);
+          const height = value > 0 ? Math.max((value / maxSubscriber) * 100, 8) : 0;
 
-            <div className="space-y-4 w-full sm:w-auto">
-              <LegendRow
-                color="#1e4d2b"
-                title={t("dashboard.completed_purchases", "Completed Purchases")}
-                percent={donut.completed}
-                count={orderAnalytics?.completedOrders ?? 0}
+          return (
+            <div key={index} className="col-span-1 flex flex-col items-center justify-end h-full">
+              <div className="text-[10px] text-slate-500 mb-2 font-bold">
+                {value}
+              </div>
+              <div
+                className="w-full rounded-t-xl"
+                style={{
+                  height: `${height}%`,
+                  minHeight: value > 0 ? "12px" : "0px",
+                  background: "linear-gradient(180deg, #1e4d2b 0%, #35a952 100%)",
+                }}
+                title={`${subscriberSeries?.labels?.[index]} : ${value}`}
               />
-              <LegendRow
-                color="#35a952"
-                title={t("dashboard.processing_purchases", "Processing Purchases")}
-                percent={donut.processing}
-                count={orderAnalytics?.activeProcessingOrders ?? 0}
-              />
-              <LegendRow
-                color="#fbbf24"
-                title={t("dashboard.returned_purchases", "Returned Purchases")}
-                percent={donut.returned}
-                count={orderAnalytics?.returnedOrders ?? 0}
-              />
+              <div className="text-[10px] text-slate-400 font-black mt-2 uppercase">
+                {subscriberSeries?.labels?.[index]}
+              </div>
             </div>
-          </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        <div className="text-center p-3 rounded-xl bg-green-50 border border-green-100">
+          <p className="text-[10px] uppercase tracking-widest font-black text-green-700">
+            {t("dashboard.total_active_subscriptions", "Active Subscriptions")}
+          </p>
+          <p className="text-sm font-black text-green-800 mt-1">
+            {Number(totalActiveSubscriptions).toLocaleString()}
+          </p>
         </div>
+
+        <div className="text-center p-3 rounded-xl bg-blue-50 border border-blue-100">
+          <p className="text-[10px] uppercase tracking-widest font-black text-blue-700">
+            {t("dashboard.subscription_value", "Subscription Value")}
+          </p>
+          <p className="text-sm font-black text-blue-800 mt-1">
+            ৳{formatCurrency(subscriptionValue)}
+          </p>
+        </div>
+
+        <div className="text-center p-3 rounded-xl bg-amber-50 border border-amber-100">
+          <p className="text-[10px] uppercase tracking-widest font-black text-amber-700">
+            {t("dashboard.total_subscription_profit", "Subscription Profit")}
+          </p>
+          <p className="text-sm font-black text-amber-800 mt-1">
+            ৳{formatCurrency(totalSubscriptionProfit)}
+          </p>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col sm:flex-row items-center justify-around flex-1 gap-8 mt-6">
+      <Donut
+        completed={donut.completed}
+        processing={donut.processing}
+        returned={donut.returned}
+        total={orderAnalytics?.totalOrders ?? 0}
+        centerLabel={t("dashboard.total_purchases", "Total Purchases")}
+      />
+
+      <div className="space-y-4 w-full sm:w-auto">
+        <LegendRow
+          color="#1e4d2b"
+          title={t("dashboard.completed_purchases", "Completed Purchases")}
+          percent={donut.completed}
+          count={orderAnalytics?.completedOrders ?? 0}
+        />
+        <LegendRow
+          color="#35a952"
+          title={t("dashboard.processing_purchases", "Processing Purchases")}
+          percent={donut.processing}
+          count={orderAnalytics?.activeProcessingOrders ?? 0}
+        />
+        <LegendRow
+          color="#fbbf24"
+          title={t("dashboard.returned_purchases", "Returned Purchases")}
+          percent={donut.returned}
+          count={orderAnalytics?.returnedOrders ?? 0}
+        />
+      </div>
+    </div>
+  )}
+</div>
       </div>
 
       {/* Profit Highlight Section */}
@@ -737,33 +982,107 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ================= Lower stats ================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <LowerStat
-          title={isCustomRangeActive ? t("dashboard.sales_for_range", "Sales for Range") : t("dashboard.period_sales", "Period Sales")}
-          value={`৳${formatCurrency(periodSales)}`}
-          sub={`${t("dashboard.prev", "Prev")}: ৳${formatCurrency(prevPeriodSales)}`}
-          icon={<BarChart3 className="w-16 h-16 opacity-10 rotate-12" />}
-        />
-        <LowerStat
-          title={t("dashboard.invoice_due", "Invoice Due (All Time)")}
-          value={`৳${formatCurrency(totalDue)}`}
-          sub={`${t("dashboard.paid", "Paid")}: ৳${formatCurrency(totalPaid)}`}
-          icon={<FileText className="w-16 h-16 opacity-10 rotate-12" />}
-        />
-        <LowerStat
-          title={t("dashboard.net_profit", "Net Profit")}
-          value={`৳${formatCurrency(netProfitPeriod)}`}
-          sub={`${t("dashboard.purchase_cost", "Purchase Cost")}: ৳${formatCurrency(purchaseCostPeriod)}`}
-          icon={<ShoppingBag className="w-16 h-16 opacity-10 rotate-12" />}
-        />
-        <LowerStat
-          title={t("dashboard.customers", "Customers Overview")}
-          value={Number(totalCustomers).toLocaleString()}
-          sub={`${t("dashboard.active", "Active")}: ${Number(activeCustomers).toLocaleString()}`}
-          icon={<Users className="w-16 h-16 opacity-10 rotate-12" />}
-        />
+
+ {isSuperAdmin && (
+  <div className="bg-white border border-slate-100 rounded-3xl p-6 mt-6">
+    <h3 className="text-lg font-black mb-4">
+      {t("dashboard.select_user", "Select User")}
+    </h3>
+
+    <select
+      value={selectedUser}
+      onChange={handleUserChange}
+      className="w-full border border-slate-200 rounded-xl p-3 text-sm font-bold"
+    >
+      <option value="">
+        {t("dashboard.all_users", "All Users")}
+      </option>
+
+      {users.map((user) => (
+        <option key={user.id} value={user.id}>
+          {user.name}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
+
+{isSuperAdmin && selectedUserId && selectedUserStats && (
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  {[
+    { label: t("dashboard.user_stats_sales", "Sales"), value: `৳${formatCurrency(selectedUserStats.sales)}` },
+    { label: t("dashboard.user_stats_expense", "Total Expense"), value: `৳${formatCurrency(selectedUserStats.totalExpense)}` },
+    { label: t("dashboard.user_stats_inventory", "Inventory Value"), value: `৳${formatCurrency(selectedUserStats.inventoryValue)}` },
+    { label: t("dashboard.user_stats_profit", "Net Profit"), value: `৳${formatCurrency(selectedUserStats.netProfit)}` },
+    { label: t("dashboard.user_stats_products", "Total Products"), value: selectedUserStats.totalProductQty },
+    { label: t("dashboard.user_stats_thumbnails", "Thumbnails"), value: selectedUserStats.thumbnailCount },
+    { label: t("dashboard.user_stats_account", "Account Value"), value: `৳${formatCurrency(selectedUserStats.accountValue)}` },
+    { label: t("dashboard.user_stats_customers", "Total Customers"), value: selectedUserStats.totalCustomers },
+  ].map((item, i) => (
+    <div
+      key={i}
+      className="p-6 text-white relative overflow-hidden rounded-3xl"
+    style={{
+  background: "#1e4d2b",
+  boxShadow: "0 10px 30px rgba(30, 77, 43, 0.12)",
+}}
+    >
+      {/* background circle */}
+      <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-white/10" />
+      <div className="absolute -bottom-14 -left-14 w-40 h-40 rounded-full bg-white/10" />
+
+      {/* label */}
+      <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest relative z-10">
+        {item.label}
+      </p>
+
+      {/* value */}
+      <div className="flex items-end justify-between mt-2 relative z-10">
+        <h3 className="text-2xl lg:text-3xl font-black tracking-tight">
+          {item.value}
+        </h3>
+
+        {/* icon placeholder */}
+        <div className="p-2 rounded-xl bg-white/15">
+        
+        </div>
       </div>
+    </div>
+  ))}
+</div>
+)}
+
+
+{!isSuperAdmin && (
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  {stats.map((stat, index) => (
+    <LowerStat
+      key={index}
+      title={stat.title}
+      value={stat.value}
+      sub={stat.sub}
+      icon={stat.icon}
+    />
+  ))}
+</div>
+
+)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      
 
       {/* ================= Sync banner ================= */}
       <div

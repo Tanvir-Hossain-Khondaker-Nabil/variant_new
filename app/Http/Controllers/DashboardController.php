@@ -9,6 +9,10 @@ use App\Models\Damage;
 use App\Models\SaleItem;
 use App\Models\Stock;
 use App\Models\Purchase;
+use App\Models\Subscription;
+use App\Models\SubscriptionPayment;
+use App\Models\User;
+use App\Models\UserDeposit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -49,8 +53,23 @@ class DashboardController extends Controller
 
     private function buildDashboardPayload(string $range, ?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $user = Auth::user();
-        $isShadowUser = ($user->type ?? null) === 'shadow';
+       $user = Auth::user();
+       $selectedUserId = request()->get('user_id');
+$isShadowUser = ($user->type ?? null) === 'shadow';
+
+// Role check
+$isSuperAdmin = $user && $user->hasRole('Super Admin');
+$isAdmin = $user && $user->hasRole('Admin');
+
+// Permission check
+$permissions = [
+    'plansView' => $user && $user->can('plans.view'),
+    'subscriptionsView' => $user && $user->can('subscriptions.view'),
+    'usersView' => $user && $user->can('users.view'),
+    'depositsView' => $user && $user->can('deposits.view'),
+];
+
+
 
         // columns (sale)
         $salesTotalCol = $isShadowUser ? 'shadow_grand_total' : 'grand_total';
@@ -95,9 +114,16 @@ class DashboardController extends Controller
         // =========================
         // SALES BASE
         // =========================
-        $salesBase = Sale::query()->whereBetween('created_at', [$from, $to]);
-        $salesPrev = Sale::query()->whereBetween('created_at', [$prevFrom, $prevTo]);
-
+$salesBase = Sale::query()
+    ->when($selectedUserId, function ($q) use ($selectedUserId) {
+        $q->where('owner_id', $selectedUserId);
+    })
+    ->whereBetween('created_at', [$from, $to]);
+$salesPrev = Sale::query()
+    ->when($selectedUserId, function ($q) use ($selectedUserId) {
+        $q->where('owner_id', $selectedUserId);
+    })
+    ->whereBetween('created_at', [$prevFrom, $prevTo]);
         // All-time (sales)
         $totalSales = (float) Sale::selectRaw("COALESCE(SUM($salesTotalCol),0) as total")->value('total');
         $totalPaid = (float) Sale::selectRaw("COALESCE(SUM($paidCol),0) as total")->value('total');
@@ -126,12 +152,19 @@ class DashboardController extends Controller
 
         // Sales series
         $salesSeries = $this->buildSalesSeries($labelMode, $from, $to, $salesTotalCol);
+        // now
+        // Profit series
+$profitSeries = $this->buildProfitSeries($labelMode, $from, $to, $salesTotalCol, $stockPurchaseCol);
+
+// Subscriber series
+$subscriberSeries = $this->buildSubscriberSeries($labelMode, $from, $to);
 
         // Total expense for period
-        $totalExpense = (float) Expense::query()
-            ->whereBetween('created_at', [$from, $to])
-            ->selectRaw("COALESCE(SUM(amount),0) as total")
-            ->value('total');
+   $totalExpense = (float) Expense::query()
+    ->when($selectedUserId, fn($q) => $q->where('owner_id', $selectedUserId))
+    ->whereBetween('created_at', [$from, $to])
+    ->selectRaw("COALESCE(SUM(amount),0) as total")
+    ->value('total');
 
         // =========================
         // PURCHASE COST (COGS)
@@ -180,8 +213,10 @@ class DashboardController extends Controller
         // =========================
         // CUSTOMERS
         // =========================
-        $totalCustomers = (int) Customer::count();
-        $activeCustomers = (int) Customer::where('is_active', true)->count();
+$totalCustomers = (int) Customer::query()
+    ->when($selectedUserId, fn($q) => $q->where('owner_id', $selectedUserId))
+    ->count();
+            $activeCustomers = (int) Customer::where('is_active', true)->count();
 
         $buyersThisPeriod = (int) $salesBase->clone()
             ->whereNotNull('customer_id')
@@ -189,6 +224,30 @@ class DashboardController extends Controller
             ->count('customer_id');
 
         $conversionRate = $activeCustomers > 0 ? ($buyersThisPeriod / $activeCustomers) * 100 : 0;
+
+        // =========================
+/// =========================
+// SUBSCRIPTIONS
+// =========================
+$totalActiveSubscriptions = (int) Subscription::where('status', 1)->count();
+
+// Active subscription current value (sum of active plans price)
+$subscriptionValue = (float) Subscription::query()
+    ->join('plans', 'subscriptions.plan_id', '=', 'plans.id')
+    ->where('subscriptions.status', 1)
+    ->selectRaw('COALESCE(SUM(plans.price),0) as total')
+    ->value('total');
+
+// Total subscription received/profit (practical profit)
+$totalSubscriptionProfit = (float) SubscriptionPayment::query()
+    ->where('status', 'completed')
+    ->selectRaw('COALESCE(SUM(amount),0) as total')
+    ->value('total');
+
+// All user deposits total
+$userTotalDeposit = (float) UserDeposit::query()
+    ->selectRaw('COALESCE(SUM(amount),0) as total')
+    ->value('total');
 
         // =========================
         // INVENTORY
@@ -203,6 +262,74 @@ class DashboardController extends Controller
         // EXPENSES (all time only)
         // =========================
         $totalExpensesAllTime = (float) Expense::sum('amount');
+
+
+        // =========================
+// SELECTED USER STATS
+// =========================
+$selectedUserStats = null;
+
+if ($isSuperAdmin && $selectedUserId) {
+
+    // 1. Sales
+    $userSales = (float) Sale::where('owner_id', $selectedUserId)
+        ->whereBetween('created_at', [$from, $to])
+        ->selectRaw("COALESCE(SUM($salesTotalCol),0) as total")
+        ->value('total');
+
+    // 2. Total Expense
+    $userExpense = (float) Expense::where('owner_id', $selectedUserId)
+        ->whereBetween('created_at', [$from, $to])
+        ->selectRaw("COALESCE(SUM(amount),0) as total")
+        ->value('total');
+
+    // 3. Inventory Value
+    $userInventoryValue = (float) Stock::where('owner_id', $selectedUserId)
+        ->selectRaw("COALESCE(SUM(quantity * $stockPurchaseCol),0) as value")
+        ->value('value');
+
+    // 4. Net Profit
+    $userPurchaseCost = (float) SaleItem::query()
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->leftJoin('stocks', 'sale_items.stock_id', '=', 'stocks.id')
+        ->where('sales.owner_id', $selectedUserId)
+        ->whereBetween('sales.created_at', [$from, $to])
+        ->selectRaw('COALESCE(SUM(sale_items.quantity * stocks.' . $stockPurchaseCol . '),0) as total')
+        ->value('total');
+
+    $userNetProfit = $userSales - $userPurchaseCost;
+
+    // 5. Total Product Quantity
+    $userTotalProductQty = (int) Stock::where('owner_id', $selectedUserId)
+        ->selectRaw("COALESCE(SUM(quantity),0) as total")
+        ->value('total');
+
+    // 6. Thumbnail count (photo column)
+    $userThumbnailCount = (int) \App\Models\Product::where('owner_id', $selectedUserId)
+        ->whereNotNull('photo')
+        ->where('photo', '!=', '')
+        ->count();
+
+    // 7. Account Value
+    $userAccountValue = (float) UserDeposit::where('owner_id', $selectedUserId)
+        ->selectRaw("COALESCE(SUM(amount),0) as total")
+        ->value('total');
+
+    // 8. Total Customers
+    $userTotalCustomers = (int) Customer::where('owner_id', $selectedUserId)
+        ->count();
+
+    $selectedUserStats = [
+        'sales'           => round($userSales, 2),
+        'totalExpense'    => round($userExpense, 2),
+        'inventoryValue'  => round($userInventoryValue, 2),
+        'netProfit'       => round($userNetProfit, 2),
+        'totalProductQty' => $userTotalProductQty,
+        'thumbnailCount'  => $userThumbnailCount,
+        'accountValue'    => round($userAccountValue, 2),
+        'totalCustomers'  => $userTotalCustomers,
+    ];
+}
 
         // =========================
         // TOP PRODUCTS
@@ -267,6 +394,9 @@ class DashboardController extends Controller
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
 
+            'profitSeries' => $profitSeries,
+'subscriberSeries' => $subscriberSeries,
+
             // sales
             'periodSales' => $periodSales,
             'prevPeriodSales' => $prevSales,
@@ -313,6 +443,13 @@ class DashboardController extends Controller
             'prevRangeFrom' => $prevFrom->toDateTimeString(),
             'prevRangeTo' => $prevTo->toDateTimeString(),
             'labelMode' => $labelMode,
+
+
+                // subscriptions
+        'totalActiveSubscriptions' => $totalActiveSubscriptions,
+'subscriptionValue' => round($subscriptionValue, 2),
+'totalSubscriptionProfit' => round($totalSubscriptionProfit, 2),
+'userTotalDeposit' => round($userTotalDeposit, 2),
         ];
 
         return [
@@ -323,6 +460,20 @@ class DashboardController extends Controller
             'totalselas' => $totalOrders,
             'totalexpense' => $totalExpensesAllTime,
             'isShadowUser' => $isShadowUser,
+
+
+
+
+              // ✅ role
+    'isSuperAdmin' => $isSuperAdmin,
+    'isAdmin' => $isAdmin,
+
+    // ✅ permissions
+    'permissions' => $permissions,
+
+      'users' => User::select('id', 'name')->get(),
+    'selectedUserId' => $selectedUserId,
+    'selectedUserStats' => $selectedUserStats,
         ];
     }
 
@@ -435,6 +586,169 @@ class DashboardController extends Controller
 
         return compact('labels', 'values');
     }
+
+
+
+    private function buildProfitSeries(string $mode, Carbon $from, Carbon $to, string $salesTotalCol, string $stockPurchaseCol): array
+{
+    if ($mode === 'hour') {
+        $labels = [];
+        $values = [];
+
+        for ($h = 0; $h < 24; $h++) {
+            $start = $from->copy()->hour($h)->minute(0)->second(0);
+            $end = $start->copy()->endOfHour();
+
+            $sales = (float) Sale::query()
+                ->whereBetween('created_at', [$start, $end])
+                ->selectRaw("COALESCE(SUM($salesTotalCol),0) as total")
+                ->value('total');
+
+            $purchaseCost = (float) SaleItem::query()
+                ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+                ->leftJoin('stocks', 'sale_items.stock_id', '=', 'stocks.id')
+                ->whereBetween('sales.created_at', [$start, $end])
+                ->selectRaw('COALESCE(SUM(sale_items.quantity * stocks.' . $stockPurchaseCol . '),0) as total')
+                ->value('total');
+
+            $labels[] = str_pad((string) $h, 2, '0', STR_PAD_LEFT) . ':00';
+            $values[] = round($sales - $purchaseCost, 2);
+        }
+
+        return compact('labels', 'values');
+    }
+
+    if ($mode === 'day') {
+        $labels = [];
+        $values = [];
+
+        $cursor = $from->copy()->startOfDay();
+        while ($cursor->lte($to)) {
+            $start = $cursor->copy()->startOfDay();
+            $end = $cursor->copy()->endOfDay();
+
+            $sales = (float) Sale::query()
+                ->whereBetween('created_at', [$start, $end])
+                ->selectRaw("COALESCE(SUM($salesTotalCol),0) as total")
+                ->value('total');
+
+            $purchaseCost = (float) SaleItem::query()
+                ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+                ->leftJoin('stocks', 'sale_items.stock_id', '=', 'stocks.id')
+                ->whereBetween('sales.created_at', [$start, $end])
+                ->selectRaw('COALESCE(SUM(sale_items.quantity * stocks.' . $stockPurchaseCol . '),0) as total')
+                ->value('total');
+
+            $labels[] = $cursor->format('d M');
+            $values[] = round($sales - $purchaseCost, 2);
+
+            $cursor->addDay();
+        }
+
+        return compact('labels', 'values');
+    }
+
+    // month
+    $labels = [];
+    $values = [];
+
+    for ($m = 1; $m <= 12; $m++) {
+        $start = Carbon::createFromDate($from->year, $m, 1)->startOfMonth();
+        $end = Carbon::createFromDate($from->year, $m, 1)->endOfMonth();
+
+        $sales = (float) Sale::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw("COALESCE(SUM($salesTotalCol),0) as total")
+            ->value('total');
+
+        $purchaseCost = (float) SaleItem::query()
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->leftJoin('stocks', 'sale_items.stock_id', '=', 'stocks.id')
+            ->whereBetween('sales.created_at', [$start, $end])
+            ->selectRaw('COALESCE(SUM(sale_items.quantity * stocks.' . $stockPurchaseCol . '),0) as total')
+            ->value('total');
+
+        $labels[] = $start->format('M');
+        $values[] = round($sales - $purchaseCost, 2);
+    }
+
+    return compact('labels', 'values');
+}
+
+
+
+private function buildSubscriberSeries(string $mode, Carbon $from, Carbon $to): array
+{
+    if ($mode === 'hour') {
+        $rows = SubscriptionPayment::query()
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$from, $to])
+            ->selectRaw('HOUR(created_at) as k')
+            ->selectRaw('COUNT(*) as v')
+            ->groupBy('k')
+            ->orderBy('k')
+            ->get();
+
+        $map = $rows->pluck('v', 'k')->toArray();
+
+        $labels = [];
+        $values = [];
+        for ($h = 0; $h < 24; $h++) {
+            $labels[] = str_pad((string) $h, 2, '0', STR_PAD_LEFT) . ':00';
+            $values[] = (int) ($map[$h] ?? 0);
+        }
+
+        return compact('labels', 'values');
+    }
+
+    if ($mode === 'day') {
+        $rows = SubscriptionPayment::query()
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$from, $to])
+            ->selectRaw('DATE(created_at) as k')
+            ->selectRaw('COUNT(*) as v')
+            ->groupBy('k')
+            ->orderBy('k')
+            ->get();
+
+        $map = $rows->pluck('v', 'k')->toArray();
+
+        $labels = [];
+        $values = [];
+        $cursor = $from->copy()->startOfDay();
+
+        while ($cursor->lte($to)) {
+            $k = $cursor->toDateString();
+            $labels[] = $cursor->format('d M');
+            $values[] = (int) ($map[$k] ?? 0);
+            $cursor->addDay();
+        }
+
+        return compact('labels', 'values');
+    }
+
+    // month
+    $rows = SubscriptionPayment::query()
+        ->where('status', 'completed')
+        ->whereBetween('created_at', [$from, $to])
+        ->selectRaw('MONTH(created_at) as k')
+        ->selectRaw('COUNT(*) as v')
+        ->groupBy('k')
+        ->orderBy('k')
+        ->get();
+
+    $map = $rows->pluck('v', 'k')->toArray();
+
+    $labels = [];
+    $values = [];
+
+    for ($m = 1; $m <= 12; $m++) {
+        $labels[] = Carbon::createFromDate($from->year, $m, 1)->format('M');
+        $values[] = (int) ($map[$m] ?? 0);
+    }
+
+    return compact('labels', 'values');
+}
 
     private function percentTriplet(int $a, int $b, int $c): array
     {

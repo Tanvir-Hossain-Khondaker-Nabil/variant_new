@@ -19,6 +19,21 @@ return [
     'total_profit' => 'মোট লাভ',
     'total_expense' => 'মোট ব্যয়',
 
+
+    // newww
+       'total_active_subscriptions' => 'মোট সক্রিয় সাবস্ক্রিপশন',
+'current_active_subscription_count' => 'বর্তমানে সক্রিয় সাবস্ক্রিপশন সংখ্যা',
+
+'subscription_value' => 'সাবস্ক্রিপশন ভ্যালু',
+'subscription_plan_value' => 'সক্রিয় সাবস্ক্রিপশনের প্ল্যান ভ্যালু',
+
+'total_subscription_profit' => 'মোট সাবস্ক্রিপশন প্রফিট',
+'subscription_received_amount' => 'সম্পন্ন সাবস্ক্রিপশন থেকে প্রাপ্ত অর্থ',
+
+'user_total_deposit' => 'ইউজার টোটাল ডিপোজিট',
+'total_user_deposit_balance' => 'সকল ব্যবহারকারীর মোট ডিপোজিট ব্যালেন্স',
+
+
     // Charts & Analytics
     'sales_performance' => 'বিক্রয় কার্যকারিতা',
     'order_analytics' => 'অর্ডার বিশ্লেষণ',
@@ -28,6 +43,13 @@ return [
     'returned' => 'ফেরত',
     'revenue' => 'রাজস্ব',
     'orders' => 'অর্ডার',
+    'profit_trend' => 'লাভের ট্রেন্ড',
+'profit_trend_monthly' => 'লাভের ট্রেন্ড (মাসভিত্তিক)',
+'profit_trend_range' => 'নির্বাচিত সময়ের লাভের ট্রেন্ড',
+'monthly_profit_graph' => 'মাসভিত্তিক লাভের গ্রাফ',
+
+'subscriber_analysis' => 'সাবস্ক্রাইবার বিশ্লেষণ',
+'monthly_subscriber_overview' => 'মাসভিত্তিক সাবস্ক্রাইবার ওভারভিউ',
 
     // Performance Indicators
     'profit_margin' => 'লাভের মার্জিন',
@@ -451,4 +473,17 @@ return [
     'due' => 'বাকি',
     'prev' => 'পূর্ববর্তী',
     'active' => 'সক্রিয়',
+// User Stats Section
+'user_statistics' => 'ব্যবহারকারীর পরিসংখ্যান',
+'user_stats_sales' => 'বিক্রয়',
+'user_stats_expense' => 'মোট ব্যয়',
+'user_stats_inventory' => 'ইনভেন্টরির মূল্য',
+'user_stats_profit' => 'নেট লাভ',
+'user_stats_products' => 'মোট পণ্য',
+'user_stats_thumbnails' => 'থাম্বনেইল',
+'user_stats_account' => 'অ্যাকাউন্ট ভ্যালু',
+'user_stats_customers' => 'মোট গ্রাহক',
+
+
+  'select_user' => 'ব্যবহারকারী নির্বাচন করুন',  
 ];
