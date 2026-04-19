@@ -1019,7 +1019,7 @@ export default function SupplierLedger({
                                                         ? selectedDue
                                                         : dueAmount
                                                 }
-                                                step="0.01"
+                                                
                                                 required
                                             />
                                         </div>

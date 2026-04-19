@@ -263,7 +263,12 @@ export default function SaleShow({ sale, isShadowUser, businessProfile }) {
       const qty = Number(item?.quantity || 0);
       const rate = Number(item?.unit_price || 0);
       const amount = Number(rowTotal(item) || 0);
-      return { desc, qty, rate, amount };
+
+      const identifiers = Array.isArray(item?.identifiers)
+        ? item.identifiers
+        : [];
+
+      return { desc, qty, rate, amount, identifiers };
     });
   }, [safeItems]);
 
@@ -382,7 +387,22 @@ export default function SaleShow({ sale, isShadowUser, businessProfile }) {
             {rows2.length ? (
               rows2.map((r, idx) => (
                 <tr key={idx}>
-                  <td className={`border-l-2 border-r-2 ${BORDER} px-2 py-2 text-sm`}>{r.desc}</td>
+                  <td className={`border-l-2 border-r-2 ${BORDER} px-2 py-2 text-sm`}>
+                    <div>{r.desc}</div>
+
+                    {Array.isArray(r.identifiers) && r.identifiers.length > 0 && (
+                      <div className="mt-1 space-y-[2px] text-[11px] text-gray-700">
+                        {r.identifiers.map((identifier, idx) => (
+                          <div key={identifier.id || idx}>
+                            <span className="font-semibold uppercase">
+                              {identifier.identifier_type}:
+                            </span>{" "}
+                            <span className="font-mono">{identifier.identifier_value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   <td className={`border-l-2 border-r-2 ${BORDER} px-2 py-2 text-sm text-center`}>
                     {formatNumberBn(r.qty)}
                   </td>
@@ -720,14 +740,38 @@ export default function SaleShow({ sale, isShadowUser, businessProfile }) {
                     <tr key={item.id || idx}>
                       <td className="border border-black p-1 text-center">{idx + 1}</td>
                       <td className="border border-black p-1 text-center font-mono">{getProductCode(item)}</td>
-                      <td className="border border-black p-1">
+                      {/* <td className="border border-black p-1">
                         <div className="font-semibold">{getProductDisplayName(item)}</div>
                         {item.item_type === "pickup" ? (
                           <div className="text-[9px] text-gray-600">Pickup Item</div>
                         ) : (
                           <div className="text-[9px] text-gray-600">
                             Stock Item
-                            {/* {item.variant?.sku ? `SKU: ${item.variant.sku}` : ""} */}
+                          </div>
+                        )}
+                      </td> */}
+
+                      <td className="border border-black p-1">
+                        <div className="font-semibold">{getProductDisplayName(item)}</div>
+
+                        {item.item_type === "pickup" ? (
+                          <div className="text-[9px] text-gray-600">Pickup Item</div>
+                        ) : (
+                          <div className="text-[9px] text-gray-600">
+                            Stock Item
+                          </div>
+                        )}
+
+                        {Array.isArray(item.identifiers) && item.identifiers.length > 0 && (
+                          <div className="mt-1 space-y-[2px]">
+                            {item.identifiers.map((identifier, i) => (
+                              <div key={identifier.id || i} className="text-[9px] leading-tight text-gray-700">
+                                <span className="font-semibold uppercase">
+                                  {identifier.identifier_type}:
+                                </span>{" "}
+                                <span className="font-mono">{identifier.identifier_value}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </td>

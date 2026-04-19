@@ -2,19 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Inertia\Inertia;
-use App\Models\Brand;
-use App\Models\Stock;
-use App\Models\Product;
-use App\Models\Variant;
-use App\Models\Category;
 use App\Models\Attribute;
+use App\Models\Brand;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\PurchaseItem;
+use App\Models\PurchaseReturnItem;
+use App\Models\ReplacementProduct;
+use App\Models\SaleItem;
+use App\Models\SalesReturnItem;
+use App\Models\Stock;
+use App\Models\Variant;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Inertia\Inertia;
 
 class ProductController extends Controller
 {
@@ -133,9 +138,18 @@ class ProductController extends Controller
     {
         $brandId = $request->input('brand_id');
         $categoryId = $request->input('category_id');
-        
-        $products = Product::latest()
-            ->with(['category', 'brand', 'variants', 'variants.stocks']) 
+
+        $baseQuery = Product::query()
+            ->latest()
+            ->with([
+                'category',
+                'brand',
+                'variants',
+                'variants.stock',
+                'variants.stocks',
+                'variants.stocks.identifiers',
+                'variants.stock.identifiers',
+            ])
             ->filter($request->only('search'))
             ->when($categoryId, function ($query, $categoryId) {
                 return $query->whereHas('category', function ($q) use ($categoryId) {
@@ -147,16 +161,17 @@ class ProductController extends Controller
                     $q->where('id', $brandId);
                 });
             })
-            ->when(request()->filled(['start_date', 'end_date']), function ($q) {
+            ->when($request->filled(['start_date', 'end_date']), function ($q) use ($request) {
                 $q->whereBetween('created_at', [
-                    request()->start_date,
-                    request()->end_date
+                    $request->start_date,
+                    $request->end_date
                 ]);
-            })
+            });
+
+        $products = (clone $baseQuery)
             ->paginate(20)
             ->withQueryString();
 
-        // Calculate stock for each product
         $products->getCollection()->transform(function ($product) {
             $totalStock = 0;
             $totalBaseStock = 0;
@@ -166,6 +181,13 @@ class ProductController extends Controller
                     $totalStock += $variant->stock->quantity;
                     $totalBaseStock += $variant->stock->base_quantity ?? $variant->stock->quantity;
                 }
+
+                if ($variant->stocks && $variant->stocks->count()) {
+                    $totalStock += $variant->stocks->sum('quantity');
+                    $totalBaseStock += $variant->stocks->sum(function ($stock) {
+                        return $stock->base_quantity ?? $stock->quantity;
+                    });
+                }
             }
 
             $product->total_stock = $totalStock;
@@ -174,12 +196,38 @@ class ProductController extends Controller
             return $product;
         });
 
+        $summaryProducts = (clone $baseQuery)->get();
+
+        $filteredCount = $summaryProducts->count();
+
+        $filteredSalePriceTotal = $summaryProducts->sum(function ($product) {
+            return $product->variants->sum(function ($variant) {
+                $total = 0;
+
+                if ($variant->stocks && $variant->stocks->count()) {
+                    $total += $variant->stocks->sum(function ($stock) {
+                        return (float) ($stock->sale_price ?? 0);
+                    });
+                }
+
+                if ($variant->stock) {
+                    $total += (float) ($variant->stock->sale_price ?? 0);
+                }
+
+                return $total;
+            });
+        });
+
         return Inertia::render("product/Product", [
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'brand_id', 'category_id', 'start_date', 'end_date'),
             'product' => $products,
             'brands' => Brand::all(),
             'categories' => Category::all(),
-            'unitConversions' => $this->getUnitConversions()
+            'unitConversions' => $this->getUnitConversions(),
+            'summary' => [
+                'count' => $filteredCount,
+                'sale_price_total' => $filteredSalePriceTotal,
+            ],
         ]);
     }
 
@@ -253,6 +301,7 @@ class ProductController extends Controller
         $request->merge([
             'has_warranty' => filter_var($request->has_warranty, FILTER_VALIDATE_BOOLEAN),
             'is_fraction_allowed' => filter_var($request->is_fraction_allowed, FILTER_VALIDATE_BOOLEAN),
+            'is_tracking_enabled' => filter_var($request->is_tracking_enabled, FILTER_VALIDATE_BOOLEAN),
         ]);
 
         $user = Auth::user();
@@ -263,7 +312,6 @@ class ProductController extends Controller
         |--------------------------------------------------------------------------
         */
         if (!$isUpdate) {
-
             $activeSub = $user->subscriptions()
                 ->where('status', 1)
                 ->where('start_date', '<=', now())
@@ -278,7 +326,6 @@ class ProductController extends Controller
             }
 
             $allowedProductRange = (int) optional($activeSub)->product_range;
-
             $outletId = $user->outlet_id ?? null;
 
             $currentCount = Product::query()
@@ -304,7 +351,21 @@ class ProductController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 3) Validation
+        | 3) Tracking rule
+        |--------------------------------------------------------------------------
+        */
+        if ($request->boolean('is_tracking_enabled')) {
+            $request->merge([
+                'unit_type' => 'piece',
+                'default_unit' => 'piece',
+                'min_sale_unit' => 'piece',
+                'is_fraction_allowed' => false,
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 4) Validation
         |--------------------------------------------------------------------------
         */
         $rules = [
@@ -326,6 +387,10 @@ class ProductController extends Controller
             'warranty_duration' => 'nullable|integer|min:0',
             'warranty_duration_type' => 'nullable|string',
             'warranty_terms' => 'nullable|string',
+
+            // tracking
+            'is_tracking_enabled' => 'nullable|boolean',
+            'tracking_type' => 'nullable|required_if:is_tracking_enabled,true|in:imei,serial',
         ];
 
         if ($request->product_type === 'in_house') {
@@ -364,7 +429,7 @@ class ProductController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 4) Save Product + Variants
+        | 5) Save Product + Variants
         |--------------------------------------------------------------------------
         */
         DB::beginTransaction();
@@ -389,6 +454,10 @@ class ProductController extends Controller
             $product->warranty_duration = $request->warranty_duration;
             $product->warranty_duration_type = $request->warranty_duration_type;
             $product->warranty_terms = $request->warranty_terms;
+
+            // tracking
+            $product->is_tracking_enabled = (bool) ($request->is_tracking_enabled ?? false);
+            $product->tracking_type = $product->is_tracking_enabled ? $request->tracking_type : null;
 
             if (!$isUpdate) {
                 $product->created_by = Auth::id();
@@ -433,34 +502,35 @@ class ProductController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | 5) Variants Logic (AUTO DEFAULT + AUTO REMOVE)
+            | 6) Variants Logic (AUTO DEFAULT + AUTO REMOVE)
             |--------------------------------------------------------------------------
             */
 
             $variants = $request->input('variants', []);
-            if (!is_array($variants))
+            if (!is_array($variants)) {
                 $variants = [];
+            }
 
             $existingVariantIds = $product->variants()->pluck('id')->toArray();
             $newVariantIds = [];
 
-            // ✅ Keep only non-empty attribute variants
             $nonEmptyVariants = [];
             $hasAnyNonEmpty = false;
 
             foreach ($variants as $variantData) {
-                if (!is_array($variantData))
+                if (!is_array($variantData)) {
                     continue;
+                }
 
                 $attributeValues = $variantData['attribute_values'] ?? [];
                 if (is_string($attributeValues)) {
                     $tmp = json_decode($attributeValues, true);
                     $attributeValues = is_array($tmp) ? $tmp : [];
                 }
-                if (!is_array($attributeValues))
+                if (!is_array($attributeValues)) {
                     $attributeValues = [];
+                }
 
-                // remove empty values
                 $attributeValues = array_filter($attributeValues, fn($v) => trim((string) $v) !== '');
 
                 if (!empty($attributeValues)) {
@@ -472,7 +542,6 @@ class ProductController extends Controller
                 }
             }
 
-            // ✅ If no attribute chosen anywhere => create one default variant
             if (!$hasAnyNonEmpty) {
                 $nonEmptyVariants = [
                     [
@@ -483,10 +552,10 @@ class ProductController extends Controller
             }
 
             foreach ($nonEmptyVariants as $variantData) {
-
                 $attributeValues = $variantData['attribute_values'] ?? [];
-                if (!is_array($attributeValues))
+                if (!is_array($attributeValues)) {
                     $attributeValues = [];
+                }
 
                 $sku = $this->generateSku($product, $attributeValues);
 
@@ -521,7 +590,6 @@ class ProductController extends Controller
                 }
             }
 
-            // ✅ Delete removed variants (this will remove old DEFAULT automatically)
             $variantsToDelete = array_diff($existingVariantIds, $newVariantIds);
             if (!empty($variantsToDelete)) {
                 Variant::whereIn('id', $variantsToDelete)->delete();
@@ -534,7 +602,6 @@ class ProductController extends Controller
                 ->with('success', "Product " . ($isUpdate ? 'updated' : 'created') . " successfully");
 
         } catch (\Exception $th) {
-
             DB::rollBack();
 
             return redirect()->back()
@@ -663,36 +730,70 @@ class ProductController extends Controller
     public function del($id)
     {
         DB::beginTransaction();
+
         try {
             $product = Product::findOrFail($id);
 
-            // Check if product has any sales or purchases
-            $hasSales = DB::table('sale_items')->where('product_id', $id)->exists();
-            $hasPurchases = DB::table('purchase_items')->where('product_id', $id)->exists();
+            // Get variant ids first
+            $variantIds = $product->variants()->pluck('id')->toArray();
 
-            if ($hasSales || $hasPurchases) {
-                return redirect()->back()->with('error', "Cannot delete product. It has associated sales or purchases.");
-            }
-
-            // ✅ delete photo
+            // Delete product photo
             if (!empty($product->photo) && Storage::disk('public')->exists($product->photo)) {
                 Storage::disk('public')->delete($product->photo);
             }
 
-            // Delete variants and their stocks
-            $variants = $product->variants()->pluck('id')->toArray();
-            if (!empty($variants)) {
-                Stock::whereIn('variant_id', $variants)->delete();
-                Variant::whereIn('id', $variants)->delete();
+            /**
+             * Delete child records first
+             * Order matters
+             */
+
+            // Return / replacement related
+            PurchaseReturnItem::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                PurchaseReturnItem::whereIn('variant_id', $variantIds)->delete();
             }
 
+            ReplacementProduct::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                ReplacementProduct::whereIn('variant_id', $variantIds)->delete();
+            }
+
+            SalesReturnItem::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                SalesReturnItem::whereIn('variant_id', $variantIds)->delete();
+            }
+
+            // Sale / purchase items
+            SaleItem::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                SaleItem::whereIn('variant_id', $variantIds)->delete();
+            }
+
+            PurchaseItem::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                PurchaseItem::whereIn('variant_id', $variantIds)->delete();
+            }
+
+            // Stocks
+            Stock::where('product_id', $product->id)->delete();
+            if (!empty($variantIds)) {
+                Stock::whereIn('variant_id', $variantIds)->delete();
+            }
+
+            // Variants
+            if (!empty($variantIds)) {
+                Variant::whereIn('id', $variantIds)->delete();
+            }
+
+            // Finally delete product
             $product->delete();
 
             DB::commit();
-            return redirect()->back()->with('success', "Product deleted successfully");
+
+            return redirect()->back()->with('success', 'Product and all related data deleted successfully.');
         } catch (\Exception $th) {
             DB::rollBack();
-            return redirect()->back()->with('error', "Server error: " . $th->getMessage());
+            return redirect()->back()->with('error', 'Server error: ' . $th->getMessage());
         }
     }
 

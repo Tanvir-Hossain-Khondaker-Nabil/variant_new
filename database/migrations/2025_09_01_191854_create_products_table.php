@@ -42,6 +42,9 @@ return new class extends Migration {
             $table->string('default_unit')->default('piece');
             $table->boolean('is_fraction_allowed')->default(false);
             $table->string('min_sale_unit')->nullable();
+
+            $table->boolean('is_tracking_enabled')->default(false)->after('warranty_terms');
+            $table->enum('tracking_type', ['imei', 'serial'])->nullable()->after('is_tracking_enabled');
             $table->timestamps();
         });
     }

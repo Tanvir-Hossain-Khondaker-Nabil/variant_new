@@ -495,7 +495,7 @@ export default function ProvidentFund({ providentFunds, filters, employees }) {
                                         className="w-full border border-gray-300 rounded-md px-3 py-2"
                                         required
                                         min="0"
-                                        step="0.01"
+                                        
                                     />
                                 </div>
                                 
@@ -510,7 +510,7 @@ export default function ProvidentFund({ providentFunds, filters, employees }) {
                                         className="w-full border border-gray-300 rounded-md px-3 py-2"
                                         required
                                         min="0"
-                                        step="0.01"
+                                        
                                     />
                                 </div>
                             </div>

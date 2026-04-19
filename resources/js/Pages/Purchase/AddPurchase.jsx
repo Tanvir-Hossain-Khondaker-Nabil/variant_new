@@ -42,24 +42,25 @@ export default function AddPurchase({
   },
 }) {
   const { t, locale } = useTranslation();
+
   const [selectedItems, setSelectedItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState("unpaid");
-  const [paidAmount, setPaidAmount] = useState(null);
+  const [paidAmount, setPaidAmount] = useState(0);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [usePartialPayment, setUsePartialPayment] = useState(false);
   const [adjustFromAdvance, setAdjustFromAdvance] = useState(false);
-  const [availableAdvance, setAvailableAdvance] = useState(null);
+  const [availableAdvance, setAvailableAdvance] = useState(0);
   const [manualPaymentOverride, setManualPaymentOverride] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [brands, setBrands] = useState([]);
-  const [transportationCost, setTransportationCost] = useState(null);
+  const [transportationCost, setTransportationCost] = useState(0);
 
   // Installment payment state
-  const [installmentDuration, setInstallmentDuration] = useState(null);
-  const [totalInstallments, setTotalInstallments] = useState(null);
+  const [installmentDuration, setInstallmentDuration] = useState(0);
+  const [totalInstallments, setTotalInstallments] = useState(0);
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -74,22 +75,23 @@ export default function AddPurchase({
   useEffect(() => {
     if (products && products.length > 0) {
       const allBrands = new Set();
+
       products.forEach((product) => {
         if (product.brand && product.brand.name) {
           allBrands.add(product.brand.name);
         }
+
         if (product.variants) {
           product.variants.forEach((variant) => {
             if (variant.attribute_values) {
-              Object.keys(variant.attribute_values).forEach(
-                (key) => {
-                  allBrands.add(key);
-                }
-              );
+              Object.keys(variant.attribute_values).forEach((key) => {
+                allBrands.add(key);
+              });
             }
           });
         }
       });
+
       setBrands(Array.from(allBrands).sort());
     }
   }, [products]);
@@ -103,7 +105,6 @@ export default function AddPurchase({
       return "Default";
     }
 
-    // Combine all attributes
     return Object.entries(variant.attribute_values)
       .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
       .map(([key, value]) => `${key}: ${value}`)
@@ -127,13 +128,15 @@ export default function AddPurchase({
   // Calculate total amount including transportation cost
   const calculateTotal = useCallback(() => {
     const itemsTotal = selectedItems.reduce(
-      (total, item) => total + (item.total_price || 0),
+      (total, item) => total + (Number(item.total_price) || 0),
       0
     );
+
     const itemTransportationCost = selectedItems.reduce(
       (total, item) => total + (parseFloat(item.transportation_cost) || 0),
       0
     );
+
     const overallTransportationCost = parseFloat(transportationCost) || 0;
 
     return itemsTotal + itemTransportationCost + overallTransportationCost;
@@ -141,18 +144,18 @@ export default function AddPurchase({
 
   const getDueAmount = useCallback(() => {
     const totalAmount = calculateTotal();
-    return Math.max(0, totalAmount - paidAmount);
+    return Math.max(0, totalAmount - (Number(paidAmount) || 0));
   }, [calculateTotal, paidAmount]);
 
   const getRemainingAdvance = useCallback(() => {
     const totalAmount = calculateTotal();
-    const advanceUsed = Math.min(availableAdvance, totalAmount);
-    return Math.max(0, availableAdvance - advanceUsed);
+    const advanceUsed = Math.min(Number(availableAdvance) || 0, totalAmount);
+    return Math.max(0, (Number(availableAdvance) || 0) - advanceUsed);
   }, [availableAdvance, calculateTotal]);
 
   const getAdvanceUsage = useCallback(() => {
     const totalAmount = calculateTotal();
-    return Math.min(availableAdvance, totalAmount);
+    return Math.min(Number(availableAdvance) || 0, totalAmount);
   }, [availableAdvance, calculateTotal]);
 
   const formatCurrency = (value) => {
@@ -182,6 +185,12 @@ export default function AddPurchase({
     transportation_cost: 0,
   });
 
+  const normalizeIdentifiersByQty = (item, qty) => {
+    const count = Math.max(0, parseInt(qty || 0, 10));
+    const current = Array.isArray(item.identifiers) ? item.identifiers : [];
+    return Array.from({ length: count }, (_, i) => current[i] || "");
+  };
+
   useEffect(() => {
     const itemsWithUnits = selectedItems.map((item) => ({
       product_id: item.product_id,
@@ -192,7 +201,11 @@ export default function AddPurchase({
       unit_price: item.unit_price,
       total_price: item.total_price,
       sale_price: item.sale_price,
-      transportation_cost: item.transportation_cost || 0
+      transportation_cost: item.transportation_cost || 0,
+      attributes: item.attributes || {},
+      identifiers: item.is_tracking_enabled
+        ? (item.identifiers || []).map((x) => String(x || "").trim())
+        : [],
     }));
 
     form.setData("items", itemsWithUnits);
@@ -226,15 +239,20 @@ export default function AddPurchase({
     manualPaymentOverride,
     isShadowUser,
     transportationCost,
+    installmentDuration,
+    totalInstallments,
   ]);
 
   const handleSupplierChange = (e) => {
     const supplierId = e.target.value;
     form.setData("supplier_id", supplierId);
+
     const supplier = suppliers?.find((s) => s.id == supplierId);
     setSelectedSupplier(supplier);
+
     if (supplier) {
       let advance = 0;
+
       if (supplier.advance_amount !== undefined) {
         advance = parseFloat(supplier.advance_amount) || 0;
       } else {
@@ -242,10 +260,12 @@ export default function AddPurchase({
         const supplierDue = parseFloat(supplier.due || 0);
         advance = Math.max(0, supplierAdvance - supplierDue);
       }
+
       setAvailableAdvance(advance);
     } else {
       setAvailableAdvance(0);
     }
+
     setUsePartialPayment(false);
     setAdjustFromAdvance(false);
     setManualPaymentOverride(false);
@@ -262,9 +282,11 @@ export default function AddPurchase({
     ) {
       const totalAmount = calculateTotal();
       const maxAdjustable = Math.min(availableAdvance, totalAmount);
+
       if (paidAmount === 0 || paidAmount > totalAmount) {
         const autoPaidAmount = Math.min(maxAdjustable, totalAmount);
         setPaidAmount(autoPaidAmount);
+
         if (autoPaidAmount >= totalAmount) {
           setPaymentStatus("paid");
         } else if (autoPaidAmount > 0) {
@@ -290,7 +312,12 @@ export default function AddPurchase({
       !adjustFromAdvance
     ) {
       const totalAmount = calculateTotal();
-      if (paymentStatus == "paid" || paymentStatus == "partial") {
+
+      if (paymentStatus === "paid") {
+        setPaidAmount(totalAmount);
+      }
+
+      if (paymentStatus === "partial" && paidAmount > totalAmount) {
         setPaidAmount(totalAmount);
       }
     }
@@ -299,11 +326,13 @@ export default function AddPurchase({
     calculateTotal,
     manualPaymentOverride,
     adjustFromAdvance,
+    paymentStatus,
   ]);
 
   const enableManualPaymentOverride = () => {
     setManualPaymentOverride(true);
     setAdjustFromAdvance(false);
+
     if (paymentStatus === "unpaid") {
       form.setData("account_id", "");
     }
@@ -312,25 +341,26 @@ export default function AddPurchase({
   const disableManualPaymentOverride = () => {
     setManualPaymentOverride(false);
     const totalAmount = calculateTotal();
+
     if (!usePartialPayment) {
       setPaidAmount(totalAmount);
     } else {
       setPaidAmount(0);
     }
+
     setPaymentStatus("unpaid");
     form.setData("account_id", "");
   };
 
   const handleManualPaymentInput = (e) => {
     const value = parseFloat(e.target.value) || 0;
-    const totalAmount = calculateTotal();
     setPaidAmount(value);
+
     if (value === 0) {
       form.setData("account_id", "");
     }
   };
 
-  // Handle transportation cost change
   const handleTransportationCostChange = (e) => {
     const value = parseFloat(e.target.value) || 0;
     setTransportationCost(value);
@@ -344,16 +374,12 @@ export default function AddPurchase({
 
       if (selectedBrand) {
         filtered = filtered.filter((product) => {
-          // Check if product brand matches
           if (product.brand?.name === selectedBrand) return true;
 
-          // Check if any variant has the selected brand as an attribute
           return product.variants?.some(
             (variant) =>
               variant.attribute_values &&
-              Object.keys(variant.attribute_values).includes(
-                selectedBrand
-              )
+              Object.keys(variant.attribute_values).includes(selectedBrand)
           );
         });
       }
@@ -376,18 +402,15 @@ export default function AddPurchase({
       setShowDropdown(true);
     } else if (selectedBrand) {
       const filtered = products.filter((product) => {
-        // Check if product brand matches
         if (product.brand?.name === selectedBrand) return true;
 
-        // Check if any variant has the selected brand as an attribute
         return product.variants?.some(
           (variant) =>
             variant.attribute_values &&
-            Object.keys(variant.attribute_values).includes(
-              selectedBrand
-            )
+            Object.keys(variant.attribute_values).includes(selectedBrand)
         );
       });
+
       setFilteredProducts(filtered);
       setShowDropdown(true);
     } else {
@@ -405,6 +428,7 @@ export default function AddPurchase({
         setShowDropdown(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () =>
       document.removeEventListener("mousedown", handleClickOutside);
@@ -445,13 +469,12 @@ export default function AddPurchase({
       variant.attribute_values &&
       Object.keys(variant.attribute_values).length > 0;
 
-    // Create a unique identifier that includes all attributes
     let variantIdentifier = "";
     if (hasAttributes) {
-      // Sort attributes to maintain consistency
       const sortedAttributes = Object.entries(
         variant.attribute_values || {}
       ).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+
       variantIdentifier = sortedAttributes
         .map(([key, value]) => `${key}:${value}`)
         .join("|");
@@ -459,7 +482,6 @@ export default function AddPurchase({
       variantIdentifier = "default";
     }
 
-    // Find existing item
     const existingItemIndex = selectedItems.findIndex(
       (item) =>
         item.product_id === product.id &&
@@ -467,38 +489,45 @@ export default function AddPurchase({
         item.variant_identifier === variantIdentifier
     );
 
-    // Get available units
     const units = getAvailableUnitsForProduct(product);
     const defaultUnit = product.default_unit || units[0] || "piece";
     const saleUnits = getAvailableSaleUnits(product, defaultUnit);
-
     const itemKey = `${product.id}-${variant.id}-${variantIdentifier}`;
+
     setProductUnits((prev) => ({ ...prev, [itemKey]: units }));
-    setSelectedUnits((prev) => ({ ...prev, [itemKey]: defaultUnit }));
+    setSelectedUnits((prev) => ({
+      ...prev,
+      [itemKey]: product.is_tracking_enabled ? "piece" : defaultUnit,
+    }));
     setUnitQuantities((prev) => ({ ...prev, [itemKey]: 1 }));
     setAvailableSaleUnits((prev) => ({ ...prev, [itemKey]: saleUnits }));
 
     if (existingItemIndex !== -1) {
       const updatedItems = [...selectedItems];
-      const item = updatedItems[existingItemIndex];
-      const currentQty = unitQuantities[itemKey] || 1;
-      item.unit_quantity = (item.unit_quantity || 1) + 1;
-      item.quantity = item.unit_quantity;
-      item.total_price = item.unit_quantity * item.unit_price;
-      setSelectedItems(updatedItems);
-      setUnitQuantities((prev) => ({
-        ...prev,
-        [itemKey]: currentQty + 1,
-      }));
-    } else {
-      const unitCost = variant.unit_cost ;
-      const salePrice = variant.selling_price || unitCost * 1.2; // Default 20% markup
+      const existingItem = updatedItems[existingItemIndex];
+      const nextQty = (existingItem.unit_quantity || 1) + 1;
 
-      // Create display name for variant
+      existingItem.unit_quantity = nextQty;
+      existingItem.quantity = nextQty;
+      existingItem.total_price = nextQty * (existingItem.unit_price || 0);
+
+      if (existingItem.is_tracking_enabled) {
+        existingItem.unit = "piece";
+        existingItem.identifiers = normalizeIdentifiersByQty(
+          existingItem,
+          nextQty
+        );
+      }
+
+      setSelectedItems(updatedItems);
+      setUnitQuantities((prev) => ({ ...prev, [itemKey]: nextQty }));
+    } else {
+      const unitCost = Number(variant.unit_cost || 0);
+      const salePrice = Number(variant.selling_price || unitCost * 1.2);
+
       let variantDisplayName = formatVariantName(variant);
       let brandName = product.brand?.name || "Unknown";
 
-      // Determine brand from attributes if specified
       if (
         selectedBrand &&
         variant.attribute_values &&
@@ -507,32 +536,33 @@ export default function AddPurchase({
         brandName = selectedBrand;
       }
 
-      setSelectedItems([
-        ...selectedItems,
-        {
-          uniqueKey: itemKey,
-          product_id: product.id,
-          variant_id: variant.id,
-          product_name: product.name,
-          product_no: product.product_no,
-          has_warranty: product.has_warranty,
-          warranty_duration: product.warranty_duration,
-          warranty_duration_type: product.warranty_duration_type,
-          brand_name: brandName,
-          variant_name: variantDisplayName,
-          variant_identifier: variantIdentifier,
-          selected_brand: selectedBrand,
-          quantity: 1,
-          unit_quantity: 1,
-          unit: defaultUnit,
-          unit_price: unitCost,
-          sale_price: salePrice,
-          transportation_cost: 0,
-          total_price: unitCost * 1,
-          // Store all attributes for reference
-          attributes: variant.attribute_values || {},
-        },
-      ]);
+      const newItem = {
+        uniqueKey: itemKey,
+        product_id: product.id,
+        variant_id: variant.id,
+        product_name: product.name,
+        product_no: product.product_no,
+        has_warranty: product.has_warranty,
+        warranty_duration: product.warranty_duration,
+        warranty_duration_type: product.warranty_duration_type,
+        brand_name: brandName,
+        variant_name: variantDisplayName,
+        variant_identifier: variantIdentifier,
+        selected_brand: selectedBrand,
+        quantity: 1,
+        unit_quantity: 1,
+        unit: product.is_tracking_enabled ? "piece" : defaultUnit,
+        unit_price: unitCost,
+        sale_price: salePrice,
+        transportation_cost: 0,
+        total_price: unitCost,
+        attributes: variant.attribute_values || {},
+        is_tracking_enabled: !!product.is_tracking_enabled,
+        tracking_type: product.tracking_type || null,
+        identifiers: product.is_tracking_enabled ? [""] : [],
+      };
+
+      setSelectedItems((prev) => [...prev, newItem]);
     }
 
     setProductSearch("");
@@ -540,11 +570,27 @@ export default function AddPurchase({
     setSelectedBrand(null);
   };
 
+  const updateIdentifier = (itemIndex, identifierIndex, value) => {
+    setSelectedItems((prev) => {
+      const updated = [...prev];
+      const item = { ...updated[itemIndex] };
+
+      const identifiers = Array.isArray(item.identifiers)
+        ? [...item.identifiers]
+        : [];
+
+      identifiers[identifierIndex] = value;
+      item.identifiers = identifiers;
+      updated[itemIndex] = item;
+
+      return updated;
+    });
+  };
+
   const removeItem = (index) => {
     const updated = [...selectedItems];
     const itemKey = updated[index].uniqueKey;
 
-    // Clean up unit states
     const newProductUnits = { ...productUnits };
     const newSelectedUnits = { ...selectedUnits };
     const newUnitQuantities = { ...unitQuantities };
@@ -566,55 +612,55 @@ export default function AddPurchase({
 
   const updateItem = (index, field, value) => {
     const updated = [...selectedItems];
-    const item = updated[index];
+    const item = { ...updated[index] };
     const itemKey = item.uniqueKey;
 
     if (field === "unit_quantity" || field === "quantity") {
       const numericValue = parseFloat(value) || 0;
-      updated[index][field] = numericValue;
-      updated[index].quantity = numericValue; // Keep quantity in sync
+
+      item[field] = numericValue;
+      item.quantity = numericValue;
+      item.total_price = numericValue * (item.unit_price || 0);
+
       setUnitQuantities((prev) => ({ ...prev, [itemKey]: numericValue }));
 
-      if (updated[index].unit_price) {
-        updated[index].total_price =
-          numericValue * updated[index].unit_price;
+      if (item.is_tracking_enabled) {
+        item.unit = "piece";
+        item.identifiers = normalizeIdentifiersByQty(item, numericValue);
       }
     } else if (field === "unit") {
-      updated[index][field] = value;
-      setSelectedUnits((prev) => ({ ...prev, [itemKey]: value }));
+      const nextUnit = item.is_tracking_enabled ? "piece" : value;
+      item.unit = nextUnit;
 
-      // Update available sale units when purchase unit changes
+      setSelectedUnits((prev) => ({ ...prev, [itemKey]: nextUnit }));
+
       const product = products.find((p) => p.id === item.product_id);
       if (product) {
-        const saleUnits = getAvailableSaleUnits(product, value);
+        const saleUnits = getAvailableSaleUnits(product, nextUnit);
         setAvailableSaleUnits((prev) => ({
           ...prev,
           [itemKey]: saleUnits,
         }));
 
-        // Update sale unit if current one is not available
         if (!saleUnits.includes(item.sale_unit || item.unit)) {
-          updated[index].sale_unit = saleUnits[0] || value;
+          item.sale_unit = saleUnits[0] || nextUnit;
         }
       }
     } else if (field === "sale_unit") {
-      updated[index][field] = value;
+      item.sale_unit = value;
     } else if (field === "unit_price") {
       const numericValue = parseFloat(value) || 0;
-      updated[index][field] = numericValue;
-      updated[index].total_price =
-        (updated[index].unit_quantity || 1) * numericValue;
+      item.unit_price = numericValue;
+      item.total_price = (item.unit_quantity || 1) * numericValue;
     } else if (field === "sale_price") {
-      const numericValue = parseFloat(value) || 0;
-      updated[index][field] = numericValue;
+      item.sale_price = parseFloat(value) || 0;
     } else if (field === "transportation_cost") {
-      const numericValue = parseFloat(value) || 0;
-      updated[index][field] = numericValue;
+      item.transportation_cost = parseFloat(value) || 0;
     } else {
-      const numericValue = parseFloat(value) || 0;
-      updated[index][field] = numericValue;
+      item[field] = value;
     }
 
+    updated[index] = item;
     setSelectedItems(updated);
   };
 
@@ -647,6 +693,9 @@ export default function AddPurchase({
         setTotalInstallments(3);
         setInstallmentDuration(3);
         break;
+
+      default:
+        break;
     }
   };
 
@@ -671,49 +720,92 @@ export default function AddPurchase({
 
   const submit = (e) => {
     e.preventDefault();
-    console.log("Submitting purchase:", paidAmount);
 
     const fail = (msg) => {
       alert(msg);
       return true;
     };
 
-    // Basic validation
-    if (selectedItems.length === 0)
-      return fail(t("purchase.no_items_selected", "Please add at least one item"));
+    if (selectedItems.length === 0) {
+      return fail(
+        t("purchase.no_items_selected", "Please add at least one item")
+      );
+    }
 
-    if (!form.data.supplier_id)
-      return fail(t("purchase.no_supplier_selected", "Please select a supplier"));
+    if (!form.data.supplier_id) {
+      return fail(
+        t("purchase.no_supplier_selected", "Please select a supplier")
+      );
+    }
 
-    if (!form.data.warehouse_id)
-      return fail(t("purchase.no_warehouse_selected", "Please select a warehouse"));
+    if (!form.data.warehouse_id) {
+      return fail(
+        t("purchase.no_warehouse_selected", "Please select a warehouse")
+      );
+    }
 
-    // Installment validation
     if (
       paymentStatus === "installment" &&
-      (!totalInstallments || totalInstallments <= 0 ||
-        !installmentDuration || installmentDuration <= 0)
+      (
+        !totalInstallments ||
+        totalInstallments <= 0 ||
+        !installmentDuration ||
+        installmentDuration <= 0
+      )
     ) {
       return fail("Please enter valid installment details");
     }
 
-    // Item & account validation (non-shadow users)
     if (!isShadowUser) {
       for (const item of selectedItems) {
-        if (item.unit_price <= 0)
+        if ((Number(item.unit_price) || 0) <= 0) {
           return fail(`Item "${item.product_name}" has invalid unit price`);
+        }
 
-        if (item.sale_price <= 0)
+        if ((Number(item.sale_price) || 0) <= 0) {
           return fail(`Item "${item.product_name}" has invalid sale price`);
+        }
 
-        if (item.unit_quantity <= 0)
+        if ((Number(item.unit_quantity) || 0) <= 0) {
           return fail(`Item "${item.product_name}" has invalid quantity`);
+        }
+
+        if (item.is_tracking_enabled) {
+          const qty = parseInt(item.unit_quantity || 0, 10);
+
+          if (item.unit !== "piece") {
+            return fail(
+              `"${item.product_name}" tracking product. Unit must be piece.`
+            );
+          }
+
+          const identifiers = (item.identifiers || [])
+            .map((x) => String(x || "").trim())
+            .filter(Boolean);
+
+          if (identifiers.length !== qty) {
+            return fail(
+              `"${item.product_name}" requires exactly ${qty} ${item.tracking_type} values.`
+            );
+          }
+
+          const uniqueIdentifiers = new Set(
+            identifiers.map((x) => x.toLowerCase())
+          );
+
+          if (uniqueIdentifiers.size !== identifiers.length) {
+            return fail(
+              `"${item.product_name}" has duplicate ${item.tracking_type}.`
+            );
+          }
+        }
       }
 
-      if (paidAmount > 0 && !selectedAccount)
+      if ((Number(paidAmount) || 0) > 0 && !selectedAccount) {
         return fail("Please select a payment account for the payment");
+      }
 
-      if (form.data.account_id && paidAmount > 0) {
+      if (form.data.account_id && (Number(paidAmount) || 0) > 0) {
         const account = accounts.find(
           (acc) => acc.id == form.data.account_id
         );
@@ -728,7 +820,6 @@ export default function AddPurchase({
       }
     }
 
-    // Prepare items
     const items = selectedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
@@ -740,9 +831,11 @@ export default function AddPurchase({
       total_price: item.total_price,
       transportation_cost: item.transportation_cost || 0,
       attributes: item.attributes || {},
+      identifiers: item.is_tracking_enabled
+        ? (item.identifiers || []).map((x) => String(x || "").trim()).filter(Boolean)
+        : [],
     }));
 
-    // Submit
     form.post(route("purchase.store"), {
       data: {
         ...form.data,
@@ -755,8 +848,9 @@ export default function AddPurchase({
       onError: (errors) => {
         alert(
           errors.error ||
-          errors.advance_adjustment ||
-          "Form submission failed"
+            errors.advance_adjustment ||
+            errors.items ||
+            "Form submission failed"
         );
         console.error("Form submission errors:", errors);
       },
@@ -768,41 +862,40 @@ export default function AddPurchase({
   const advanceUsage = getAdvanceUsage();
   const remainingAdvance = getRemainingAdvance();
 
-  // Calculate item transportation cost total
   const itemTransportationCostTotal = selectedItems.reduce(
     (total, item) => total + (parseFloat(item.transportation_cost) || 0),
     0
   );
 
-  // Get selected account
   const selectedAccount = form.data.account_id
     ? accounts.find((acc) => acc.id == form.data.account_id)
     : null;
 
   return (
     <div
-      className={`bg-white rounded-box p-4 max-w-[1300px] mx-auto ${locale === "bn" ? "bangla-font" : ""
-        }`}
+      className={`bg-white rounded-box p-4 max-w-[1300px] mx-auto ${
+        locale === "bn" ? "bangla-font" : ""
+      }`}
     >
       <PageHeader
         title={
           isShadowUser
             ? t(
-              "purchase.create_shadow_purchase",
-              "Create Purchase (Shadow Mode)"
-            )
+                "purchase.create_shadow_purchase",
+                "Create Purchase (Shadow Mode)"
+              )
             : t("purchase.create_purchase", "Create New Purchase")
         }
         subtitle={
           isShadowUser
             ? t(
-              "purchase.create_shadow_subtitle",
-              "Add products with shadow pricing"
-            )
+                "purchase.create_shadow_subtitle",
+                "Add products with shadow pricing"
+              )
             : t(
-              "purchase.create_subtitle",
-              "Add products with real and shadow pricing"
-            )
+                "purchase.create_subtitle",
+                "Add products with real and shadow pricing"
+              )
         }
       >
         <button
@@ -831,16 +924,10 @@ export default function AddPurchase({
                 required
               >
                 <option value="">
-                  {t(
-                    "purchase.select_supplier",
-                    "Select Supplier"
-                  )}
+                  {t("purchase.select_supplier", "Select Supplier")}
                 </option>
                 {suppliers?.map((supplier) => (
-                  <option
-                    key={supplier.id}
-                    value={supplier.id}
-                  >
+                  <option key={supplier.id} value={supplier.id}>
                     {supplier.name} - {supplier.company}
                   </option>
                 ))}
@@ -851,51 +938,35 @@ export default function AddPurchase({
               <div className="card card-compact bg-gray-50 border border-gray-200 rounded-xl">
                 <div className="card-body p-3">
                   <h3 className="card-title text-xs font-black uppercase text-gray-900 flex items-center gap-2">
-                    <User
-                      size={14}
-                      className="text-red-600"
-                    />
-                    {t(
-                      "purchase.supplier_information",
-                      "Supplier Details"
-                    )}
+                    <User size={14} className="text-red-600" />
+                    {t("purchase.supplier_information", "Supplier Details")}
                   </h3>
+
                   <div className="space-y-1 text-xs">
                     <div className="flex items-center gap-2">
-                      <User
-                        size={11}
-                        className="text-gray-400"
-                      />
-                      <span className="font-bold">
-                        {selectedSupplier.name}
-                      </span>
+                      <User size={11} className="text-gray-400" />
+                      <span className="font-bold">{selectedSupplier.name}</span>
                     </div>
+
                     {selectedSupplier.company && (
                       <div className="flex items-center gap-2">
-                        <Building
-                          size={11}
-                          className="text-gray-400"
-                        />
+                        <Building size={11} className="text-gray-400" />
                         <span className="truncate">
                           {selectedSupplier.company}
                         </span>
                       </div>
                     )}
+
                     {availableAdvance > 0 && (
                       <div className="flex items-center gap-2 pt-1 border-t border-gray-200">
-                        <DollarSign
-                          size={11}
-                          className="text-red-600"
-                        />
+                        <DollarSign size={11} className="text-red-600" />
                         <span className="text-xs font-black uppercase text-red-600 tracking-tighter">
-                          Advance: ৳
-                          {formatCurrency(
-                            availableAdvance
-                          )}
+                          Advance: ৳{formatCurrency(availableAdvance)}
                         </span>
                       </div>
                     )}
                   </div>
+
                   {availableAdvance > 0 && (
                     <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -903,17 +974,12 @@ export default function AddPurchase({
                           type="checkbox"
                           checked={adjustFromAdvance}
                           onChange={(e) =>
-                            setAdjustFromAdvance(
-                              e.target.checked
-                            )
+                            setAdjustFromAdvance(e.target.checked)
                           }
                           className="checkbox checkbox-xs checkbox-error"
                         />
                         <span className="text-xs font-bold uppercase">
-                          {t(
-                            "purchase.adjust_from_advance",
-                            "Use Advance"
-                          )}
+                          {t("purchase.adjust_from_advance", "Use Advance")}
                         </span>
                       </label>
                     </div>
@@ -937,16 +1003,10 @@ export default function AddPurchase({
                 required
               >
                 <option value="">
-                  {t(
-                    "purchase.select_warehouse",
-                    "Select Warehouse"
-                  )}
+                  {t("purchase.select_warehouse", "Select Warehouse")}
                 </option>
                 {warehouses?.map((warehouse) => (
-                  <option
-                    key={warehouse.id}
-                    value={warehouse.id}
-                  >
+                  <option key={warehouse.id} value={warehouse.id}>
                     {warehouse.name} ({warehouse.code})
                   </option>
                 ))}
@@ -956,11 +1016,7 @@ export default function AddPurchase({
             <div className="form-control">
               <label className="label py-1">
                 <span className="label-text font-bold text-gray-600 text-sm">
-                  {t(
-                    "purchase.purchase_date",
-                    "Purchase Date"
-                  )}{" "}
-                  *
+                  {t("purchase.purchase_date", "Purchase Date")} *
                 </span>
               </label>
               <input
@@ -968,16 +1024,12 @@ export default function AddPurchase({
                 className="input input-bordered w-full rounded-xl text-sm"
                 value={form.data.purchase_date}
                 onChange={(e) =>
-                  form.setData(
-                    "purchase_date",
-                    e.target.value
-                  )
+                  form.setData("purchase_date", e.target.value)
                 }
                 required
               />
             </div>
 
-            {/* Transportation Cost Input */}
             <div className="form-control">
               <label className="label py-1">
                 <span className="label-text font-bold text-gray-600 text-sm flex items-center gap-2">
@@ -989,8 +1041,6 @@ export default function AddPurchase({
                 <span className="absolute left-3 top-3 text-gray-500">৳</span>
                 <input
                   type="number"
-                  // step="0.01"
-                  // min="0"
                   className="input input-bordered w-full rounded-xl text-sm pl-8"
                   value={transportationCost}
                   onChange={handleTransportationCostChange}
@@ -999,7 +1049,6 @@ export default function AddPurchase({
               </div>
             </div>
 
-            {/* Payment Info Card */}
             {!isShadowUser && (
               <div className="card card-compact bg-white text-gray-800 border border-gray-200 rounded-lg shadow-sm">
                 <div className="card-body p-2">
@@ -1009,30 +1058,33 @@ export default function AddPurchase({
                     </h3>
                   </div>
 
-                  {/* Account Selection */}
                   <div className="form-control mb-1">
                     <label className="label py-0">
                       <span className="label-text text-[10px] text-gray-500 uppercase font-bold tracking-wider">
                         Payment Account{" "}
-                        {(paymentStatus === "paid" || paymentStatus === "partial") &&
+                        {(paymentStatus === "paid" ||
+                          paymentStatus === "partial") &&
                           "*"}
                       </span>
                     </label>
 
                     <select
-                      className={`select select-bordered select-xs w-full bg-white border-gray-300 text-gray-800 text-[11px] ${(paymentStatus === "paid" ||
-                        paymentStatus === "partial") &&
+                      className={`select select-bordered select-xs w-full bg-white border-gray-300 text-gray-800 text-[11px] ${
+                        (paymentStatus === "paid" ||
+                          paymentStatus === "partial" ||
+                          paymentStatus === "installment") &&
                         !form.data.account_id
-                        ? "border-red-500"
-                        : ""
-                        }`}
+                          ? "border-red-500"
+                          : ""
+                      }`}
                       value={form.data.account_id}
                       onChange={(e) =>
                         form.setData("account_id", e.target.value)
                       }
                       required={
                         paymentStatus === "paid" ||
-                        paymentStatus === "partial"
+                        paymentStatus === "partial" ||
+                        paymentStatus === "installment"
                       }
                       disabled={paymentStatus === "unpaid"}
                     >
@@ -1050,7 +1102,8 @@ export default function AddPurchase({
                       ))}
                     </select>
 
-                    {(paymentStatus === "paid" || paymentStatus === "installment" ||
+                    {(paymentStatus === "paid" ||
+                      paymentStatus === "installment" ||
                       paymentStatus === "partial") &&
                       !form.data.account_id && (
                         <div className="text-red-500 text-[10px] mt-0.5">
@@ -1060,7 +1113,6 @@ export default function AddPurchase({
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 mb-1">
-                    {/* Payment Status */}
                     <div className="form-control">
                       <select
                         className="select select-bordered select-xs w-full bg-white border-gray-300 text-gray-800 text-[11px]"
@@ -1076,7 +1128,6 @@ export default function AddPurchase({
                       </select>
                     </div>
 
-                    {/* Paid Amount */}
                     <div className="form-control">
                       <input
                         type="number"
@@ -1089,9 +1140,8 @@ export default function AddPurchase({
                     </div>
                   </div>
 
-                  {paymentStatus === 'installment' && (
+                  {paymentStatus === "installment" && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                      {/* Total Installments */}
                       <div className="md:col-span-1">
                         <div className="form-control">
                           <label className="label py-0">
@@ -1111,7 +1161,6 @@ export default function AddPurchase({
                         </div>
                       </div>
 
-                      {/* Installment Duration */}
                       <div className="md:col-span-1">
                         <div className="form-control">
                           <label className="label py-0">
@@ -1147,7 +1196,6 @@ export default function AddPurchase({
               </div>
             )}
 
-            {/* Notes */}
             <div className="form-control">
               <label className="label py-1">
                 <span className="label-text font-bold text-gray-600 text-sm">
@@ -1158,9 +1206,7 @@ export default function AddPurchase({
                 className="textarea textarea-bordered w-full rounded-xl text-sm"
                 rows="2"
                 value={form.data.notes}
-                onChange={(e) =>
-                  form.setData("notes", e.target.value)
-                }
+                onChange={(e) => form.setData("notes", e.target.value)}
                 placeholder={t(
                   "purchase.notes_placeholder",
                   "Additional notes..."
@@ -1177,21 +1223,16 @@ export default function AddPurchase({
             >
               <label className="label py-1">
                 <span className="label-text font-bold text-gray-600 text-sm">
-                  {t(
-                    "purchase.add_products",
-                    "Add Components"
-                  )}{" "}
-                  *
+                  {t("purchase.add_products", "Add Components")} *
                 </span>
               </label>
+
               <div className="relative">
                 <input
                   type="text"
                   className="input input-bordered w-full pr-10 rounded-xl h-11 border-gray-300 focus:border-red-600 text-sm"
                   value={productSearch}
-                  onChange={(e) =>
-                    setProductSearch(e.target.value)
-                  }
+                  onChange={(e) => setProductSearch(e.target.value)}
                   placeholder={
                     selectedBrand
                       ? `Search ${selectedBrand} parts...`
@@ -1211,7 +1252,6 @@ export default function AddPurchase({
                 )}
               </div>
 
-              {/* Product Dropdown */}
               {showDropdown && filteredProducts.length > 0 && (
                 <div
                   ref={dropdownRef}
@@ -1226,72 +1266,57 @@ export default function AddPurchase({
                         {product.name} ({product.product_no})
                         {product.brand?.name && (
                           <span className="ml-2 text-[#329D4D]">
-                            Brand:{" "}
-                            {product.brand.name}
+                            Brand: {product.brand.name}
+                          </span>
+                        )}
+                        {product.is_tracking_enabled && (
+                          <span className="ml-2 text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                            {product.tracking_type === "imei"
+                              ? "IMEI"
+                              : "SERIAL"}
                           </span>
                         )}
                       </div>
 
-                      {product.variants?.map(
-                        (variant) => {
-                          const variantMatchesBrand =
-                            () => {
-                              if (!selectedBrand)
-                                return true;
-                              const attributeKeys =
-                                Object.keys(
-                                  variant.attribute_values ||
-                                  {}
-                                );
-                              return (
-                                attributeKeys.includes(
-                                  selectedBrand
-                                ) ||
-                                product.brand
-                                  ?.name ===
-                                selectedBrand
-                              );
-                            };
+                      {product.variants?.map((variant) => {
+                        const variantMatchesBrand = () => {
+                          if (!selectedBrand) return true;
 
-                          if (!variantMatchesBrand())
-                            return null;
-
-                          const variantName =
-                            formatVariantName(
-                              variant
-                            );
+                          const attributeKeys = Object.keys(
+                            variant.attribute_values || {}
+                          );
 
                           return (
-                            <div
-                              key={variant.id}
-                              className="p-2 hover:bg-red-50 cursor-pointer flex justify-between items-center transition-colors border-b border-dashed border-gray-100 last:border-none"
-                              onClick={() =>
-                                addItem(
-                                  product,
-                                  variant
-                                )
-                              }
-                            >
-                              <div style={{borderRadius: '0.375rem'}} className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2">
-                                <span className="font-bold text-xs text-gray-800 truncate">
-                                  { variantName }
-                                </span>
-                                {/* {variant.sku && (
-                                  <span className="text-xs text-gray-500 mt-0.5">
-                                    SKU: {variant.sku}
-                                  </span>
-                                )} */}
-                              </div>
-                              <div className="font-mono text-xs font-black text-gray-500">
-                                ৳
-                                {formatCurrency(
-                                  variant.unit_cost
-                                )}
-                              </div>
-                            </div>
+                            attributeKeys.includes(selectedBrand) ||
+                            product.brand?.name === selectedBrand
                           );
-                        }
-                      )}
+                        };
+
+                        if (!variantMatchesBrand()) return null;
+
+                        const variantName = formatVariantName(variant);
+
+                        return (
+                          <div
+                            key={variant.id}
+                            className="p-2 hover:bg-red-50 cursor-pointer flex justify-between items-center transition-colors border-b border-dashed border-gray-100 last:border-none"
+                            onClick={() => addItem(product, variant)}
+                          >
+                            <div
+                              style={{ borderRadius: "0.375rem" }}
+                              className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2"
+                            >
+                              <span className="font-bold text-xs text-gray-800 truncate">
+                                {variantName}
+                              </span>
+                            </div>
+
+                            <div className="font-mono text-xs font-black text-gray-500">
+                              ৳{formatCurrency(variant.unit_cost)}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
@@ -1302,32 +1327,24 @@ export default function AddPurchase({
               <div className="space-y-3">
                 <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                   <h3 className="font-black uppercase tracking-widest text-xs text-gray-900">
-                    {t(
-                      "purchase.selected_items",
-                      "Itemized Registry"
-                    )}
+                    {t("purchase.selected_items", "Itemized Registry")}
                   </h3>
                   <div className="text-xs text-gray-500">
                     {selectedItems.length} items • Total: ৳
                     {formatCurrency(totalAmount)}
                   </div>
                 </div>
+
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                   {selectedItems.map((item, index) => {
                     const itemKey = item.uniqueKey;
-                    const availableUnits = productUnits[
-                      itemKey
-                    ] || ["piece"];
+                    const availableUnits = productUnits[itemKey] || ["piece"];
                     const selectedUnit =
-                      selectedUnits[itemKey] ||
-                      availableUnits[0];
+                      selectedUnits[itemKey] || availableUnits[0];
                     const unitQuantity =
-                      unitQuantities[itemKey] ||
-                      item.quantity ||
-                      1;
-                    const saleUnits = availableSaleUnits[
-                      itemKey
-                    ] || [selectedUnit];
+                      unitQuantities[itemKey] || item.quantity || 1;
+                    const saleUnits =
+                      availableSaleUnits[itemKey] || [selectedUnit];
 
                     return (
                       <div
@@ -1342,37 +1359,38 @@ export default function AddPurchase({
                                 <span className="text-xs text-[#329D4D] ml-2 font-black uppercase tracking-wider bg-red-50 px-2 py-0.5 rounded w-fit mt-1">
                                   {item.brand_name}
                                 </span>
+                                {item.is_tracking_enabled && (
+                                  <span className="text-xs text-amber-700 ml-2 font-black uppercase tracking-wider bg-amber-50 px-2 py-0.5 rounded w-fit mt-1">
+                                    {item.tracking_type === "imei"
+                                      ? "IMEI TRACKED"
+                                      : "SERIAL TRACKED"}
+                                  </span>
+                                )}
                               </h4>
 
                               {item.has_warranty && (
                                 <p className="text-xs text-gray-700 font-medium mt-1 truncate">
-                                  {item.warranty_duration} {item.warranty_duration_type} warranty
+                                  {item.warranty_duration}{" "}
+                                  {item.warranty_duration_type} warranty
                                 </p>
                               )}
 
                               <p className="text-xs text-gray-700 font-medium mt-1 truncate">
-                                {
-                                  item.variant_name
-                                }
+                                {item.variant_name}
                               </p>
                             </div>
+
                             <button
                               type="button"
-                              onClick={() =>
-                                removeItem(
-                                  index
-                                )
-                              }
+                              onClick={() => removeItem(index)}
                               className="btn btn-xs btn-ghost text-red-600 hover:bg-red-50"
                             >
                               <Trash2 size={12} />
                             </button>
                           </div>
 
-                          {/* ইউনিট সেটিংস */}
-                          <div className=" p-2 bg-gray-50 rounded border border-gray-200">
+                          <div className="p-2 bg-gray-50 rounded border border-gray-200">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
-                              {/* Purchase Unit */}
                               <div className="form-control">
                                 <label className="label py-0">
                                   <span className="label-text text-xs uppercase font-black text-gray-400">
@@ -1381,42 +1399,24 @@ export default function AddPurchase({
                                 </label>
                                 <select
                                   className="select select-bordered select-sm w-full text-xs"
-                                  value={
-                                    selectedUnit
+                                  value={selectedUnit}
+                                  onChange={(e) =>
+                                    updateItem(index, "unit", e.target.value)
                                   }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    updateItem(
-                                      index,
-                                      "unit",
-                                      e
-                                        .target
-                                        .value
-                                    )
-                                  }
+                                  disabled={item.is_tracking_enabled}
                                 >
-                                  {availableUnits.map(
-                                    (
-                                      unit
-                                    ) => (
-                                      <option
-                                        key={
-                                          unit
-                                        }
-                                        value={
-                                          unit
-                                        }
-                                        className="text-xs"
-                                      >
-                                        {unit.toUpperCase()}
-                                      </option>
-                                    )
-                                  )}
+                                  {availableUnits.map((unit) => (
+                                    <option
+                                      key={unit}
+                                      value={unit}
+                                      className="text-xs"
+                                    >
+                                      {unit.toUpperCase()}
+                                    </option>
+                                  ))}
                                 </select>
                               </div>
 
-                              {/* Purchase Quantity */}
                               <div className="form-control">
                                 <label className="label py-0">
                                   <span className="label-text text-xs uppercase font-black text-gray-400">
@@ -1425,27 +1425,20 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  step="0.001"
-                                  min="0.001"
+                                  step={item.is_tracking_enabled ? "1" : "0.001"}
+                                  min={item.is_tracking_enabled ? "1" : "0.001"}
                                   className="input input-bordered input-sm w-full font-black rounded text-xs"
-                                  value={
-                                    unitQuantity
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
+                                  value={unitQuantity}
+                                  onChange={(e) =>
                                     updateItem(
                                       index,
                                       "unit_quantity",
-                                      e
-                                        .target
-                                        .value
+                                      e.target.value
                                     )
                                   }
                                 />
                               </div>
 
-                              {/* Unit Cost */}
                               <div className="form-control">
                                 <label className="label py-0">
                                   <span className="label-text text-xs uppercase font-black text-gray-400">
@@ -1454,15 +1447,14 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  // step="0.01"
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
-                                  value={ item.unit_price    }
-                                  onChange={( e ) =>updateItem(   index,"unit_price",  e.target.value)
+                                  value={item.unit_price}
+                                  onChange={(e) =>
+                                    updateItem(index, "unit_price", e.target.value)
                                   }
                                 />
                               </div>
 
-                              {/* Sale Price */}
                               <div className="form-control">
                                 <label className="label py-0">
                                   <span className="label-text text-xs uppercase font-black text-gray-400">
@@ -1471,33 +1463,15 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  // step="0.01"
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
-                                  value={item.sale_price } onChange={( e ) =>updateItem(  index,"sale_price",e.target.value)
+                                  value={item.sale_price}
+                                  onChange={(e) =>
+                                    updateItem(index, "sale_price", e.target.value)
                                   }
                                 />
                               </div>
 
-                              {/* Total Price Display */}
                               <div className="col-span-4 flex items-center justify-end pt-2 border-t border-gray-200">
-                                {/* <div className="form-control flex-1 mr-4">
-                                  <label className="label py-0">
-                                    <span className="label-text text-xs uppercase font-black text-gray-400">
-                                      Transportation Cost
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    className="input input-bordered input-sm w-full font-mono text-xs rounded"
-                                    value={item.transportation_cost || 0}
-                                    onChange={(e) =>
-                                      updateItem(index, "transportation_cost", e.target.value)
-                                    }
-                                  />
-                                </div> */}
-
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs uppercase font-black text-gray-400 mb-1">
                                     Item Total
@@ -1508,6 +1482,54 @@ export default function AddPurchase({
                                 </div>
                               </div>
                             </div>
+
+                            {item.is_tracking_enabled && (
+                              <div className="mt-3 p-3 rounded-xl border border-amber-200 bg-amber-50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-black uppercase text-amber-700">
+                                    {item.tracking_type === "imei"
+                                      ? "IMEI Numbers"
+                                      : "Serial Numbers"}
+                                  </span>
+                                  <span className="text-[10px] text-amber-600 font-bold">
+                                    Qty: {parseInt(item.unit_quantity || 0)}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {Array.from({
+                                    length: parseInt(item.unit_quantity || 0),
+                                  }).map((_, idx) => (
+                                    <input
+                                      key={idx}
+                                      type="text"
+                                      className="input input-bordered input-sm w-full"
+                                      placeholder={`${
+                                        item.tracking_type === "imei"
+                                          ? "IMEI"
+                                          : "Serial"
+                                      } ${idx + 1}`}
+                                      value={item.identifiers?.[idx] || ""}
+                                      onChange={(e) =>
+                                        updateIdentifier(
+                                          index,
+                                          idx,
+                                          e.target.value
+                                        )
+                                      }
+                                    />
+                                  ))}
+                                </div>
+
+                                <div className="text-[11px] text-amber-700 mt-2">
+                                  প্রতিটি{" "}
+                                  {item.tracking_type === "imei"
+                                    ? "IMEI"
+                                    : "Serial"}{" "}
+                                  unique হতে হবে।
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1524,72 +1546,23 @@ export default function AddPurchase({
                 <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">
                   {selectedBrand
                     ? `No ${selectedBrand} items added`
-                    : t(
-                      "purchase.no_items_added",
-                      "Registry Empty"
-                    )}
+                    : t("purchase.no_items_added", "Registry Empty")}
                 </p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Summary Section */}
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-            {/* <div className="mb-4 pb-3 border-b border-gray-200">
-              <h4 className="font-bold text-gray-700 text-sm mb-2 flex items-center gap-2">
-                <Info size={14} />
-                Purchase Breakdown
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                  <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                    Items Cost
-                  </div>
-                  <div className="text-lg font-black text-gray-900">
-                    ৳{formatCurrency(selectedItems.reduce((total, item) => total + (item.total_price || 0), 0))}
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                  <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
-                    <Truck size={12} />
-                    Item Transportation
-                  </div>
-                  <div className="text-lg font-black text-gray-900">
-                    ৳{formatCurrency(itemTransportationCostTotal)}
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                  <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
-                    <Truck size={12} />
-                    Overall Transportation
-                  </div>
-                  <div className="text-lg font-black text-gray-900">
-                    ৳{formatCurrency(transportationCost)}
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                  <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                    Total Transportation
-                  </div>
-                  <div className="text-lg font-black text-gray-900">
-                    ৳{formatCurrency(itemTransportationCostTotal + parseFloat(transportationCost || 0))}
-                  </div>
-                </div>
-              </div>
-            </div> */}
-
-            {/* Total Summary */}
             <div className="col-span-full flex items-center justify-between gap-4 bg-white border border-gray-200 rounded-lg px-4 py-2 text-xs">
-
-              {/* Items Cost */}
               <div className="flex flex-col">
                 <span className="uppercase font-bold text-gray-400">
                   Items
                 </span>
                 <span className="font-mono font-black text-gray-800">
-                  ৳{formatCurrency(
+                  ৳
+                  {formatCurrency(
                     selectedItems.reduce(
                       (total, item) => total + (item.total_price || 0),
                       0
@@ -1598,7 +1571,6 @@ export default function AddPurchase({
                 </span>
               </div>
 
-              {/* Gross */}
               <div className="flex flex-col text-center">
                 <span className="uppercase font-bold text-gray-400">
                   Gross
@@ -1608,48 +1580,45 @@ export default function AddPurchase({
                 </span>
               </div>
 
-              {/* Transport */}
               <div className="flex flex-col text-center">
                 <span className="uppercase font-bold text-gray-400">
                   Transport
                 </span>
                 <span className="font-mono font-black text-gray-800">
-                  ৳{formatCurrency(
+                  ৳
+                  {formatCurrency(
                     itemTransportationCostTotal + Number(transportationCost || 0)
                   )}
                 </span>
               </div>
 
-              {/* Paid */}
               <div className="flex flex-col text-center">
                 <span className="uppercase font-bold text-gray-400">
                   Paid
                 </span>
                 <span
-                  className={`font-mono font-black ${paidAmount > 0 ? "text-green-600" : "text-gray-400"
-                    }`}
+                  className={`font-mono font-black ${
+                    paidAmount > 0 ? "text-green-600" : "text-gray-400"
+                  }`}
                 >
                   ৳{formatCurrency(paidAmount)}
                 </span>
               </div>
 
-              {/* Due */}
               <div className="flex flex-col text-center">
                 <span className="uppercase font-bold text-gray-400">
                   Due
                 </span>
                 <span
-                  className={`font-mono font-black ${dueAmount > 0 ? "text-red-600" : "text-gray-400"
-                    }`}
+                  className={`font-mono font-black ${
+                    dueAmount > 0 ? "text-red-600" : "text-gray-400"
+                  }`}
                 >
                   ৳{formatCurrency(dueAmount)}
                 </span>
               </div>
-
             </div>
 
-
-            {/* Account Info Summary */}
             {selectedAccount && (
               <div className="mt-3 p-3 bg-white rounded-lg border border-gray-300">
                 <div className="flex items-center justify-between">
@@ -1669,10 +1638,7 @@ export default function AddPurchase({
                       Balance
                     </div>
                     <div className="text-sm font-mono font-bold">
-                      ৳
-                      {formatCurrency(
-                        selectedAccount.current_balance
-                      )}
+                      ৳{formatCurrency(selectedAccount.current_balance)}
                     </div>
                   </div>
                 </div>
@@ -1686,15 +1652,17 @@ export default function AddPurchase({
             <div className="flex items-center gap-3">
               <div>
                 <h4 className="font-bold text-gray-900 uppercase text-sm">
-                  {isShadowUser
-                    ? "Shadow Purchase"
-                    : "Purchase Summary"}
+                  {isShadowUser ? "Shadow Purchase" : "Purchase Summary"}
                 </h4>
                 <p className="text-xs text-gray-500">
                   {selectedItems.length} items • Transportation: ৳
-                  {formatCurrency(itemTransportationCostTotal + parseFloat(transportationCost || 0))}
+                  {formatCurrency(
+                    itemTransportationCostTotal +
+                      parseFloat(transportationCost || 0)
+                  )}
                 </p>
               </div>
+
               {selectedBrand && (
                 <button
                   type="button"
@@ -1716,13 +1684,12 @@ export default function AddPurchase({
 
             <button
               type="submit"
-              className={`btn rounded-xl px-8 font-black uppercase text-xs tracking-[0.2em] shadow ${isShadowUser
-                ? "bg-amber-500 hover:bg-amber-600 text-black border-none"
-                : "bg-red-600 hover:bg-red-700 text-white border-none"
-                }`}
-              disabled={
-                form.processing || selectedItems.length === 0
-              }
+              className={`btn rounded-xl px-8 font-black uppercase text-xs tracking-[0.2em] shadow ${
+                isShadowUser
+                  ? "bg-amber-500 hover:bg-amber-600 text-black border-none"
+                  : "bg-red-600 hover:bg-red-700 text-white border-none"
+              }`}
+              disabled={form.processing || selectedItems.length === 0}
             >
               {form.processing ? (
                 <div className="loading loading-spinner loading-sm"></div>

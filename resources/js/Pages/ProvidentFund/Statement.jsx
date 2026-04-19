@@ -30,7 +30,7 @@ export default function Statement({ user, statement, totalEmployeeContribution, 
                             <label className="block text-sm font-medium text-gray-700">Provident Fund Percentage</label>
                             <input
                                 type="number"
-                                step="0.01"
+                                
                                 min="0"
                                 max="20"
                                 value={data.provident_fund_percentage}

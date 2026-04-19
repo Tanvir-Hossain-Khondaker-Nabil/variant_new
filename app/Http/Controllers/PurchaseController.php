@@ -2,27 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Http\Requests\PurchaseRequestStore;
+use App\Models\Account;
 use App\Models\BusinessProfile;
+use App\Models\Installment;
 use App\Models\Payment;
-use Inertia\Inertia;
-use App\Models\Purchase;
-use App\Models\Supplier;
-use App\Models\Warehouse;
 use App\Models\Product;
+use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\Stock;
-use App\Models\Account;
-use App\Models\Installment;
+use App\Models\StockIdentifier;
+use App\Models\Supplier;
+use App\Models\Variant;
+use App\Models\Warehouse;
 use App\Models\Warranty;
+use Carbon\Carbon;
+use DNS1D;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
 use Illuminate\Support\Str;
-use DNS1D;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 
 class PurchaseController extends Controller
 {
@@ -86,7 +90,13 @@ class PurchaseController extends Controller
 
         $query = Purchase::latest()
             ->GlobalOnly()
-            ->with(['supplier', 'warehouse', 'items.product', 'items.variant']);
+            ->with([
+                'supplier',
+                'warehouse',
+                'items.product',
+                'items.variant',
+                'items.stock.identifiers',
+            ]);
 
         // Search filter
         $query->when($request->filled('search'), function ($q) use ($request) {
@@ -110,6 +120,12 @@ class PurchaseController extends Controller
                     fn($q) =>
                     $q->where('barcode', 'like', "%{$search}%")
                         ->orWhere('batch_no', 'like', "%{$search}%")
+                )
+                ->orWhereHas(
+                    'items.stock.identifiers',
+                    fn($q) =>
+                    $q->where('identifier_value', 'like', "%{$search}%")
+                        ->orWhere('identifier_type', 'like', "%{$search}%")
                 );
         });
 
@@ -135,7 +151,6 @@ class PurchaseController extends Controller
 
         $purchases = $query->paginate(20)->withQueryString();
 
-        // Transform purchases
         $purchases->getCollection()->transform(function ($purchase) use ($isShadowUser) {
 
             if ($isShadowUser) {
@@ -143,13 +158,15 @@ class PurchaseController extends Controller
             }
 
             $barcodes = [];
+            $identifiers = [];
 
-            $purchase->items?->transform(function ($item) use (&$barcodes) {
+            $purchase->items?->transform(function ($item) use (&$barcodes, &$identifiers) {
 
-                $stock = Stock::where([
-                    'product_id' => $item->product_id,
-                    'variant_id' => $item->variant_id,
-                ])
+                $stock = Stock::with('identifiers')
+                    ->where([
+                        'product_id' => $item->product_id,
+                        'variant_id' => $item->variant_id,
+                    ])
                     ->where('batch_no', 'LIKE', "PO-{$item->id}-%")
                     ->first();
 
@@ -168,6 +185,17 @@ class PurchaseController extends Controller
                     'unit' => $stock->unit,
                     'created_at' => $stock->created_at,
                     'has_barcode' => !empty($stock->barcode),
+                    'identifiers' => $stock->identifiers->map(function ($identifier) {
+                        return [
+                            'id' => $identifier->id,
+                            'identifier_type' => $identifier->identifier_type,
+                            'identifier_value' => $identifier->identifier_value,
+                            'status' => $identifier->status,
+                            'sale_id' => $identifier->sale_id,
+                            'sale_item_id' => $identifier->sale_item_id,
+                            'sold_at' => $identifier->sold_at,
+                        ];
+                    })->values(),
                 ];
 
                 if ($stock->barcode) {
@@ -179,6 +207,20 @@ class PurchaseController extends Controller
                     ];
                 }
 
+                foreach ($stock->identifiers as $identifier) {
+                    $identifiers[] = [
+                        'id' => $identifier->id,
+                        'product_name' => $item->product->name ?? '',
+                        'variant_name' => $item->variant->sku ?? '',
+                        'batch_no' => $stock->batch_no,
+                        'barcode' => $stock->barcode,
+                        'identifier_type' => $identifier->identifier_type,
+                        'identifier_value' => $identifier->identifier_value,
+                        'status' => $identifier->status,
+                        'sold_at' => $identifier->sold_at,
+                    ];
+                }
+
                 return $item;
             });
 
@@ -186,11 +228,15 @@ class PurchaseController extends Controller
             $purchase->has_barcode = count($barcodes) > 0;
             $purchase->barcode_count = count($barcodes);
 
+            $purchase->identifiers = $identifiers;
+            $purchase->has_identifiers = count($identifiers) > 0;
+            $purchase->identifier_count = count($identifiers);
+
             return $purchase;
         });
 
         return Inertia::render('Purchase/PurchaseList', [
-            'filters' => $request->only(['search', 'status', 'date']),
+            'filters' => $request->only(['search', 'status', 'date', 'date_from', 'date_to']),
             'purchases' => $purchases,
             'isShadowUser' => $isShadowUser,
             'accounts' => Account::where('is_active', true)->get(),
@@ -334,12 +380,10 @@ class PurchaseController extends Controller
     // Store purchase: barcode ALWAYS created from batch_no
     public function store(PurchaseRequestStore $request)
     {
-
         $user = Auth::user();
         $isShadowUser = ($user->type === 'shadow');
         $request->validated();
 
-        // Account validation for real users
         if (!$isShadowUser && $request->paid_amount > 0 && !$request->account_id) {
             return back()->withErrors(['error' => 'Please select a payment account when making payment']);
         }
@@ -349,10 +393,12 @@ class PurchaseController extends Controller
 
         if ($request->account_id) {
             $account = Account::find($request->account_id);
-            if (!$account)
+            if (!$account) {
                 return back()->withErrors(['error' => 'Selected account not found']);
-            if (!$account->is_active)
+            }
+            if (!$account->is_active) {
                 return back()->withErrors(['error' => 'Selected account is not active']);
+            }
             $payment_type = $account->type ?? 'cash';
         }
 
@@ -373,7 +419,6 @@ class PurchaseController extends Controller
 
         DB::beginTransaction();
         try {
-            $purchaseCount = Purchase::count();
             do {
                 $purchaseNo = 'PUR-' . date('Ymd') . '-' . strtoupper(Str::random(6));
             } while (Purchase::where('purchase_no', $purchaseNo)->exists());
@@ -409,18 +454,17 @@ class PurchaseController extends Controller
             if ($request->payment_status === 'installment') {
                 $installmentDuration = (int) $request->installment_duration;
                 $totalInstallments = (int) $request->total_installments;
-
                 $this->installmentManage($purchase, $installmentDuration, $totalInstallments);
             }
 
-
             foreach ($request->items as $item) {
-                $product = Product::find($item['product_id']);
+                $product = Product::findOrFail($item['product_id']);
+                $this->validateTrackedItem($product, $item);
+
                 $unitType = $product->unit_type ?? 'piece';
                 $unit = $item['unit'] ?? ($product->default_unit ?? 'piece');
                 $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 1);
 
-                // Calculate base quantity
                 $baseQuantity = $this->convertToBase($unitQuantity, $unit, $unitType);
 
                 $unitPrice = $isShadowUser ? 0 : (float) ($item['unit_price'] ?? 0);
@@ -445,31 +489,24 @@ class PurchaseController extends Controller
                     'warehouse_id' => $request->warehouse_id
                 ]);
 
-
-
                 if ($product->has_warranty) {
-
                     $endDate = match ($product->warranty_duration_type) {
-                        Product::Day   => now()->addDays($product->warranty_duration),
+                        Product::Day => now()->addDays($product->warranty_duration),
                         Product::Month => now()->addMonths($product->warranty_duration),
-                        Product::Year  => now()->addYears($product->warranty_duration),
-                        default        => now(),
+                        Product::Year => now()->addYears($product->warranty_duration),
+                        default => now(),
                     };
 
                     Warranty::create([
                         'purchase_item_id' => $purchaseItem->id,
                         'start_date' => now(),
-                        'end_date'   => $endDate,
-                        'terms'      => $product->warranty_terms,
+                        'end_date' => $endDate,
+                        'terms' => $product->warranty_terms,
                     ]);
                 }
 
-
-
-                // ✅ Batch no
                 $batchNo = 'PO-' . $purchaseItem->id . '-' . Str::upper(Str::random(4));
 
-                // ✅ Stock create (per purchase item)
                 $stock = Stock::create([
                     'warehouse_id' => $request->warehouse_id,
                     'product_id' => $item['product_id'],
@@ -483,11 +520,10 @@ class PurchaseController extends Controller
                     'batch_no' => $batchNo,
                 ]);
 
-                // ✅ barcode = batch_no (ALWAYS)
                 $this->generateStockBarcodeFromBatch($stock);
+                $this->saveTrackedIdentifiers($product, $purchaseItem, $stock, $item);
             }
 
-            // Payment (same as your logic)
             if ($paidAmount > 0) {
                 if ($account) {
                     if (!$account->canWithdraw($paidAmount)) {
@@ -516,9 +552,6 @@ class PurchaseController extends Controller
             return redirect()->back()->with('error', 'Error creating purchase: ' . $e->getMessage());
         }
     }
-
-
-
     //installment manage function
     private function installmentManage($purchase, $installmentDuration, $totalInstallments)
     {
@@ -551,9 +584,6 @@ class PurchaseController extends Controller
             ]);
         }
     }
-
-
-
 
     // ✅ barcode = batch_no + image
     private function generateStockBarcodeFromBatch(Stock $stock)
@@ -840,209 +870,321 @@ class PurchaseController extends Controller
     /**
      * Update purchase (batch-wise delete old item stock)
      */
-    public function update(PurchaseRequestStore $request, $id)
+    public function update(Request $request)
     {
+        $isUpdate = !empty($request->id);
+
+        $request->merge([
+            'has_warranty' => filter_var($request->has_warranty, FILTER_VALIDATE_BOOLEAN),
+            'is_fraction_allowed' => filter_var($request->is_fraction_allowed, FILTER_VALIDATE_BOOLEAN),
+            'is_tracking_enabled' => filter_var($request->is_tracking_enabled, FILTER_VALIDATE_BOOLEAN),
+        ]);
+
         $user = Auth::user();
-        $isShadowUser = ($user->type === 'shadow');
-        $request->validated();
 
-        if ($user->role !== 'admin' && $user->id !== Purchase::find($id)->created_by) {
-            return back()->withErrors(['error' => 'You are not authorized to edit this purchase.']);
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | 1) Subscription + Product Range Limit (Only for Create)
+        |--------------------------------------------------------------------------
+        */
+        if (!$isUpdate) {
+            $activeSub = $user->subscriptions()
+                ->where('status', 1)
+                ->where('start_date', '<=', now())
+                ->where('end_date', '>=', now())
+                ->latest('end_date')
+                ->first();
 
-        $purchase = Purchase::with('items')->findOrFail($id);
-
-        if ($purchase->status == 'approved' && $purchase->user_type == 'shadow') {
-            return back()->withErrors(['error' => 'Cannot edit an approved shadow purchase.']);
-        }
-
-        if (!$isShadowUser && $request->paid_amount > 0 && !$request->account_id) {
-            return back()->withErrors(['error' => 'Please select a payment account when making payment']);
-        }
-
-        $account = null;
-        if ($request->account_id) {
-            $account = Account::find($request->account_id);
-            if (!$account)
-                return back()->withErrors(['error' => 'Selected account not found']);
-            if (!$account->is_active)
-                return back()->withErrors(['error' => 'Selected account is not active']);
-        }
-
-        $adjustamount = $request->adjust_from_advance ?? false;
-        $payment_type = 'cash';
-
-        if ($adjustamount == true) {
-            $supplier = Supplier::find($request->supplier_id);
-            $payment_type = 'advance_adjustment';
-
-            $previousAdjustment = $purchase->payment_type === 'advance_adjustment' ? $purchase->paid_amount : 0;
-            if ($previousAdjustment > 0) {
-                $supplier->update(['advance_amount' => $supplier->advance_amount + $previousAdjustment]);
+            if (!$activeSub) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'No active subscription found. Please renew/activate your plan.');
             }
 
-            if ($request->paid_amount > $supplier->advance_amount) {
-                return back()->withErrors(['error' => 'Advance adjustment cannot be greater than available advance amount.']);
-            }
+            $allowedProductRange = (int) optional($activeSub)->product_range;
+            $outletId = $user->outlet_id ?? null;
 
-            $supplier->update(['advance_amount' => $supplier->advance_amount - $request->paid_amount]);
-        } else {
-            if ($purchase->payment_type === 'advance_adjustment') {
-                $supplier = Supplier::find($purchase->supplier_id);
-                $supplier->update(['advance_amount' => $supplier->advance_amount + $purchase->paid_amount]);
+            $currentCount = Product::query()
+                ->when($outletId, fn($q) => $q->where('outlet_id', $outletId))
+                ->count();
+
+            if ($allowedProductRange > 0 && $currentCount >= $allowedProductRange) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', "Product limit exceeded! Your plan allows {$allowedProductRange} products. Current: {$currentCount}.");
             }
         }
 
-        DB::beginTransaction();
-        try {
-            $totalAmount = 0;
-            foreach ($request->items as $item) {
-                $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
-                $unitPrice = (float) ($item['unit_price'] ?? 0);
-                $totalAmount += $unitQuantity * $unitPrice;
-            }
+        /*
+        |--------------------------------------------------------------------------
+        | 2) Decode variants JSON (Safe)
+        |--------------------------------------------------------------------------
+        */
+        if ($request->has('variants') && is_string($request->variants)) {
+            $decoded = json_decode($request->variants, true);
+            $request->merge(['variants' => is_array($decoded) ? $decoded : []]);
+        }
 
-            $paidAmount = (float) ($request->paid_amount ?? 0);
-            $dueAmount = $totalAmount - $paidAmount;
-
-            $purchase->update([
-                'supplier_id' => $request->supplier_id,
-                'warehouse_id' => $request->warehouse_id,
-                'purchase_date' => $request->purchase_date,
-                'grand_total' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'due_amount' => $dueAmount,
-                'payment_status' => $request->payment_status,
-                'notes' => $request->notes,
-                'payment_type' => $payment_type
+        /*
+        |--------------------------------------------------------------------------
+        | 3) Tracking rule
+        |--------------------------------------------------------------------------
+        */
+        if ($request->boolean('is_tracking_enabled')) {
+            $request->merge([
+                'unit_type' => 'piece',
+                'default_unit' => 'piece',
+                'min_sale_unit' => 'piece',
+                'is_fraction_allowed' => false,
             ]);
+        }
 
-            // ✅ Delete existing items + delete their stock by batch
-            foreach ($purchase->items as $item) {
-                $stock = Stock::where('warehouse_id', $purchase->warehouse_id)
-                    ->where('product_id', $item->product_id)
-                    ->where('variant_id', $item->variant_id)
-                    ->where('batch_no', 'LIKE', 'PO-' . $item->id . '-%')
-                    ->first();
+        /*
+        |--------------------------------------------------------------------------
+        | 4) Validation
+        |--------------------------------------------------------------------------
+        */
+        $rules = [
+            'product_name' => 'required|string|max:255',
+            'category_id' => 'required|exists:categories,id',
+            'product_no' => 'nullable|string|max:100|unique:products,product_no,' . ($request->id ?? 'NULL'),
+            'description' => 'nullable|string',
+            'product_type' => 'required|in:regular,in_house',
+            'variants' => 'nullable|array',
+            'variants.*.attribute_values' => 'nullable',
+            'brand_id' => 'nullable|exists:brands,id',
+            'unit_type' => 'required|in:piece,weight,volume,length',
+            'default_unit' => 'required|string|max:20',
+            'min_sale_unit' => 'nullable|string|max:20',
+            'photo' => 'nullable|image|max:2048',
+            'type' => 'nullable|string|max:20',
+            'is_fraction_allowed' => 'nullable',
+            'has_warranty' => 'nullable',
+            'warranty_duration' => 'nullable|integer|min:0',
+            'warranty_duration_type' => 'nullable|string',
+            'warranty_terms' => 'nullable|string',
 
-                if ($stock) {
-                    $stock->delete();
-                }
+            // tracking
+            'is_tracking_enabled' => 'nullable|boolean',
+            'tracking_type' => 'nullable|required_if:is_tracking_enabled,true|in:imei,serial',
+        ];
 
-                $item->delete();
+        if ($request->product_type === 'in_house') {
+            $rules = array_merge($rules, [
+                'in_house_cost' => 'required|numeric|min:0',
+                'in_house_shadow_cost' => 'nullable|numeric|min:0',
+                'in_house_sale_price' => 'required|numeric|min:0',
+                'in_house_shadow_sale_price' => 'nullable|numeric|min:0',
+                'in_house_initial_stock' => 'required|integer|min:0',
+            ]);
+        }
+
+        // unit based validation
+        if ($request->unit_type === 'weight') {
+            $rules['default_unit'] = 'required|in:ton,kg,gram,pound';
+            $rules['min_sale_unit'] = 'nullable|in:ton,kg,gram,pound';
+        } elseif ($request->unit_type === 'volume') {
+            $rules['default_unit'] = 'required|in:liter,ml';
+            $rules['min_sale_unit'] = 'nullable|in:liter,ml';
+        } elseif ($request->unit_type === 'length') {
+            $rules['default_unit'] = 'required|in:meter,cm,mm';
+            $rules['min_sale_unit'] = 'nullable|in:meter,cm,mm';
+        } else {
+            $rules['default_unit'] = 'required|in:piece,dozen,box';
+            $rules['min_sale_unit'] = 'nullable|in:piece,dozen,box';
+        }
+
+        $validator = Validator::make($request->all(), $rules);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error', 'Please fix the validation errors');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 5) Save Product + Variants
+        |--------------------------------------------------------------------------
+        */
+        DB::beginTransaction();
+
+        try {
+            $product = $isUpdate ? Product::find($request->id) : new Product();
+
+            if ($isUpdate && !$product) {
+                throw new \Exception("Product not found with ID: " . $request->id);
             }
 
-            // ✅ Recreate items + stock + barcode
-            foreach ($request->items as $item) {
-                $product = Product::find($item['product_id']);
-                $unitType = $product->unit_type ?? 'piece';
-                $unit = $item['unit'] ?? ($product->default_unit ?? 'piece');
-                $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 1);
+            $product->name = $request->product_name;
+            $product->type = $request->type;
+            $product->brand_id = $request->brand_id ?: null;
+            $product->product_no = $request->product_no;
+            $product->category_id = $request->category_id;
+            $product->description = $request->description;
+            $product->product_type = $request->product_type;
 
-                // Calculate base quantity
-                $baseQuantity = $this->convertToBase($unitQuantity, $unit, $unitType);
+            // warranty
+            $product->has_warranty = (bool) ($request->has_warranty ?? false);
+            $product->warranty_duration = $request->warranty_duration;
+            $product->warranty_duration_type = $request->warranty_duration_type;
+            $product->warranty_terms = $request->warranty_terms;
 
-                $unitPrice = $isShadowUser ? 0 : (float) ($item['unit_price'] ?? 0);
-                $salePrice = $isShadowUser ? 0 : (float) ($item['sale_price'] ?? 0);
-                $totalPrice = $unitQuantity * $unitPrice;
+            // tracking
+            $product->is_tracking_enabled = (bool) ($request->is_tracking_enabled ?? false);
+            $product->tracking_type = $product->is_tracking_enabled ? $request->tracking_type : null;
 
-                if (!$isShadowUser && $salePrice <= 0) {
-                    throw new \Exception("Sale price must be greater than 0 for product ID: {$item['product_id']}");
-                }
-
-                $purchaseItem = $purchase->items()->create([
-                    'product_id' => $item['product_id'],
-                    'variant_id' => $item['variant_id'],
-                    'quantity' => $unitQuantity,
-                    'unit' => $unit,
-                    'unit_quantity' => $unitQuantity,
-                    'base_quantity' => $baseQuantity,
-                    'unit_price' => $unitPrice,
-                    'sale_price' => $salePrice,
-                    'total_price' => $totalPrice,
-                    'created_by' => $user->id,
-                    'warehouse_id' => $request->warehouse_id
-                ]);
-
-                $batchNo = 'PO-' . $purchaseItem->id . '-' . Str::upper(Str::random(4));
-
-                $stock = Stock::create([
-                    'warehouse_id' => $request->warehouse_id,
-                    'product_id' => $item['product_id'],
-                    'variant_id' => $item['variant_id'],
-                    'quantity' => $unitQuantity,
-                    'unit' => $unit,
-                    'base_quantity' => $baseQuantity,
-                    'purchase_price' => $unitPrice,
-                    'sale_price' => $salePrice,
-                    'created_by' => $user->id,
-                    'batch_no' => $batchNo,
-                ]);
-
-                $this->generateStockBarcodeFromBatch($stock);
+            if (!$isUpdate) {
+                $product->created_by = Auth::id();
             }
 
-            // Payment update logic (kept same as your style)
-            $payment = Payment::where('purchase_id', $purchase->id)->first();
+            // unit fields
+            $product->unit_type = $request->unit_type;
+            $product->default_unit = $request->default_unit;
+            $product->is_fraction_allowed = (bool) ($request->is_fraction_allowed ?? false);
+            $product->min_sale_unit = $request->min_sale_unit;
 
-            if ($payment) {
-                if ($payment->account_id) {
-                    $oldAccount = Account::find($payment->account_id);
-                    if ($oldAccount) {
-                        $oldPaymentAmount = $payment->getSignedAmount();
-                        $oldAccount->updateBalance(abs($oldPaymentAmount), 'deposit');
+            // outlet_id set only if empty
+            if (!$product->outlet_id && $user && isset($user->outlet_id)) {
+                $product->outlet_id = $user->outlet_id;
+            }
+
+            // Photo upload
+            if ($request->hasFile('photo')) {
+                if (!empty($product->photo) && Storage::disk('public')->exists($product->photo)) {
+                    Storage::disk('public')->delete($product->photo);
+                }
+                $path = $request->file('photo')->store('products', 'public');
+                $product->photo = $path;
+            }
+
+            // In-house fields
+            if ($request->product_type === 'in_house') {
+                $product->in_house_cost = $request->in_house_cost;
+                $product->in_house_shadow_cost = $request->in_house_shadow_cost ?? 0;
+                $product->in_house_sale_price = $request->in_house_sale_price ?? 0;
+                $product->in_house_shadow_sale_price = $request->in_house_shadow_sale_price ?? 0;
+                $product->in_house_initial_stock = $request->in_house_initial_stock ?? 0;
+            } else {
+                $product->in_house_cost = null;
+                $product->in_house_shadow_cost = null;
+                $product->in_house_sale_price = null;
+                $product->in_house_shadow_sale_price = null;
+                $product->in_house_initial_stock = 0;
+            }
+
+            $product->save();
+
+            /*
+            |--------------------------------------------------------------------------
+            | 6) Variants Logic (AUTO DEFAULT + AUTO REMOVE)
+            |--------------------------------------------------------------------------
+            */
+
+            $variants = $request->input('variants', []);
+            if (!is_array($variants)) {
+                $variants = [];
+            }
+
+            $existingVariantIds = $product->variants()->pluck('id')->toArray();
+            $newVariantIds = [];
+
+            $nonEmptyVariants = [];
+            $hasAnyNonEmpty = false;
+
+            foreach ($variants as $variantData) {
+                if (!is_array($variantData)) {
+                    continue;
+                }
+
+                $attributeValues = $variantData['attribute_values'] ?? [];
+                if (is_string($attributeValues)) {
+                    $tmp = json_decode($attributeValues, true);
+                    $attributeValues = is_array($tmp) ? $tmp : [];
+                }
+                if (!is_array($attributeValues)) {
+                    $attributeValues = [];
+                }
+
+                $attributeValues = array_filter($attributeValues, fn($v) => trim((string) $v) !== '');
+
+                if (!empty($attributeValues)) {
+                    $hasAnyNonEmpty = true;
+                    $nonEmptyVariants[] = [
+                        'id' => $variantData['id'] ?? null,
+                        'attribute_values' => $attributeValues,
+                    ];
+                }
+            }
+
+            if (!$hasAnyNonEmpty) {
+                $nonEmptyVariants = [
+                    [
+                        'id' => null,
+                        'attribute_values' => [],
+                    ]
+                ];
+            }
+
+            foreach ($nonEmptyVariants as $variantData) {
+                $attributeValues = $variantData['attribute_values'] ?? [];
+                if (!is_array($attributeValues)) {
+                    $attributeValues = [];
+                }
+
+                $sku = $this->generateSku($product, $attributeValues);
+
+                if (!empty($variantData['id'])) {
+                    $variant = Variant::where('id', $variantData['id'])
+                        ->where('product_id', $product->id)
+                        ->first();
+
+                    if ($variant) {
+                        $variant->update([
+                            'attribute_values' => $attributeValues,
+                            'sku' => $sku,
+                        ]);
+                        $newVariantIds[] = $variant->id;
+
+                        if ($product->product_type === 'in_house') {
+                            $this->updateInHouseStock($product, $variant);
+                        }
                     }
-                }
-
-                if ($paidAmount <= 0) {
-                    $payment->delete();
                 } else {
-                    $payment->update([
-                        'amount' => -$paidAmount,
-                        'payment_method' => $request->payment_method ?? $payment_type,
-                        'note' => $request->notes,
-                        'supplier_id' => $request->supplier_id,
-                        'account_id' => $request->account_id
+                    $variant = Variant::create([
+                        'product_id' => $product->id,
+                        'attribute_values' => $attributeValues,
+                        'sku' => $sku,
                     ]);
 
-                    if ($account) {
-                        if (!$account->canWithdraw($paidAmount)) {
-                            throw new \Exception("Insufficient balance in account: {$account->name}");
-                        }
-                        $account->updateBalance($paidAmount, 'withdraw');
-                    }
-                }
-            } elseif ($paidAmount > 0) {
-                if ($account) {
-                    if (!$account->canWithdraw($paidAmount)) {
-                        throw new \Exception("Insufficient balance in account: {$account->name}");
-                    }
-                    $account->updateBalance($paidAmount, 'withdraw');
-                }
+                    $newVariantIds[] = $variant->id;
 
-                Payment::create([
-                    'purchase_id' => $purchase->id,
-                    'amount' => -$paidAmount,
-                    'payment_method' => $request->payment_method ?? $payment_type,
-                    'txn_ref' => 'nexoryn-' . Str::random(10),
-                    'note' => $request->notes,
-                    'supplier_id' => $request->supplier_id,
-                    'account_id' => $request->account_id,
-                    'paid_at' => Carbon::now(),
-                    'created_by' => Auth::id()
-                ]);
+                    if ($product->product_type === 'in_house') {
+                        $this->createInHouseStock($product, $variant);
+                    }
+                }
+            }
+
+            $variantsToDelete = array_diff($existingVariantIds, $newVariantIds);
+            if (!empty($variantsToDelete)) {
+                Variant::whereIn('id', $variantsToDelete)->delete();
+                Stock::whereIn('variant_id', $variantsToDelete)->delete();
             }
 
             DB::commit();
 
-            return redirect()->route('purchase.list')->with('success', 'Purchase updated successfully');
-        } catch (\Exception $e) {
+            return redirect()->route('product.list')
+                ->with('success', "Product " . ($isUpdate ? 'updated' : 'created') . " successfully");
+
+        } catch (\Exception $th) {
             DB::rollBack();
-            return redirect()->back()->with('error', 'Error updating purchase: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', "Server error: " . $th->getMessage());
         }
     }
-
-
 
     public function destroy($id)
     {
@@ -1261,5 +1403,76 @@ class PurchaseController extends Controller
         $purchaseItem->total_price = $purchaseItem->shadow_total_price ?? $purchaseItem->total_price;
 
         return $purchaseItem;
+    }
+
+    private function validateTrackedItem(Product $product, array $item): void
+    {
+        if (!$product->is_tracking_enabled) {
+            return;
+        }
+
+        $qty = (int) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
+        $unit = $item['unit'] ?? 'piece';
+        $identifiers = $item['identifiers'] ?? [];
+
+        if ($unit !== 'piece') {
+            throw ValidationException::withMessages([
+                'items' => "{$product->name} tracked product. Unit must be piece."
+            ]);
+        }
+
+        if (!is_array($identifiers) || count($identifiers) !== $qty) {
+            throw ValidationException::withMessages([
+                'items' => "{$product->name} requires exactly {$qty} {$product->tracking_type} values."
+            ]);
+        }
+
+        $cleaned = collect($identifiers)
+            ->map(fn($v) => trim((string) $v))
+            ->filter()
+            ->values();
+
+        if ($cleaned->count() !== $qty) {
+            throw ValidationException::withMessages([
+                'items' => "{$product->name} requires all {$qty} {$product->tracking_type} values."
+            ]);
+        }
+
+        if ($cleaned->unique(fn($v) => strtolower($v))->count() !== $cleaned->count()) {
+            throw ValidationException::withMessages([
+                'items' => "Duplicate {$product->tracking_type} found for {$product->name}."
+            ]);
+        }
+
+        $exists = \App\Models\StockIdentifier::whereIn('identifier_value', $cleaned->all())->exists();
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'items' => "One or more {$product->tracking_type} already exists."
+            ]);
+        }
+    }
+
+    private function saveTrackedIdentifiers(Product $product, PurchaseItem $purchaseItem, Stock $stock, array $item): void
+    {
+        if (!$product->is_tracking_enabled) {
+            return;
+        }
+
+        foreach (($item['identifiers'] ?? []) as $identifierValue) {
+            $identifierValue = trim((string) $identifierValue);
+
+            \App\Models\StockIdentifier::create([
+                'stock_id' => $stock->id,
+                'purchase_item_id' => $purchaseItem->id,
+                'product_id' => $product->id,
+                'variant_id' => $purchaseItem->variant_id,
+                'identifier_type' => $product->tracking_type,
+                'identifier_value' => $identifierValue,
+                'status' => 'available',
+                'created_by' => Auth::id(),
+                'outlet_id' => Auth::user()?->outlet_id,
+                'owner_id' => Auth::id(),
+            ]);
+        }
     }
 }

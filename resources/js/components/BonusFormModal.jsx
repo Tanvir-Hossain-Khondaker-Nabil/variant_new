@@ -59,7 +59,7 @@ export default function BonusFormModal({ data, setData, errors, processing, onSu
                                 <label className="block text-sm font-medium text-gray-700">Percentage (%)</label>
                                 <input
                                     type="number"
-                                    step="0.01"
+                                    
                                     min="0"
                                     max="100"
                                     value={data.percentage}
@@ -74,7 +74,7 @@ export default function BonusFormModal({ data, setData, errors, processing, onSu
                                 <label className="block text-sm font-medium text-gray-700">Fixed Amount</label>
                                 <input
                                     type="number"
-                                    step="0.01"
+                                    
                                     min="0"
                                     value={data.fixed_amount}
                                     onChange={e => setData('fixed_amount', e.target.value)}

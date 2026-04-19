@@ -68,11 +68,14 @@ export default function AddProduct({ category, update, brand, attributes, errors
         default_unit: update?.default_unit || "piece",
         is_fraction_allowed: typeof update?.is_fraction_allowed === "boolean" ? update.is_fraction_allowed : true,
         min_sale_unit: update?.min_sale_unit || "",
-        // Warranty fields
         has_warranty: Boolean(update?.has_warranty) || false,
         warranty_duration: update?.warranty_duration || "",
         warranty_duration_type: update?.warranty_duration_type || "month",
         warranty_terms: update?.warranty_terms || "",
+
+        is_tracking_enabled: Boolean(update?.is_tracking_enabled) || false,
+        tracking_type: update?.tracking_type || "",
+
         variants: [],
         photo: null,
     });
@@ -85,10 +88,10 @@ export default function AddProduct({ category, update, brand, attributes, errors
                 words.length === 1
                     ? words[0].substring(0, 6).toUpperCase()
                     : words
-                          .slice(0, 2)
-                          .map((w) => w.charAt(0))
-                          .join("")
-                          .toUpperCase();
+                        .slice(0, 2)
+                        .map((w) => w.charAt(0))
+                        .join("")
+                        .toUpperCase();
             return `${code}-${Date.now().toString().slice(-4)}`;
         },
         [update]
@@ -255,11 +258,10 @@ export default function AddProduct({ category, update, brand, attributes, errors
                                     {["local", "global"].map((type) => (
                                         <label
                                             key={type}
-                                            className={`flex items-center gap-2 cursor-pointer px-3 py-1 rounded-md border ${
-                                                productForm.data.type === type
-                                                    ? "border-primary text-primary bg-primary/5"
-                                                    : "border-gray-300 text-slate-600"
-                                            }`}
+                                            className={`flex items-center gap-2 cursor-pointer px-3 py-1 rounded-md border ${productForm.data.type === type
+                                                ? "border-primary text-primary bg-primary/5"
+                                                : "border-gray-300 text-slate-600"
+                                                }`}
                                         >
                                             <input
                                                 type="radio"
@@ -358,11 +360,10 @@ export default function AddProduct({ category, update, brand, attributes, errors
                                             productForm.setData("default_unit", unitsByType[type][0]);
                                             productForm.setData("min_sale_unit", unitsByType[type][0]);
                                         }}
-                                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${
-                                            productForm.data.unit_type === type
-                                                ? "bg-primary text-white"
-                                                : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                                        }`}
+                                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${productForm.data.unit_type === type
+                                            ? "bg-primary text-white"
+                                            : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                                            }`}
                                     >
                                         {type}
                                     </button>
@@ -417,6 +418,80 @@ export default function AddProduct({ category, update, brand, attributes, errors
                                 />
                                 <span className="text-xs font-bold text-slate-600">{t("Allow Fractional Sales")}</span>
                             </label>
+
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="bg-slate-50 px-5 py-3 border-b flex items-center gap-2">
+                                    <Package size={16} className="text-primary" />
+                                    <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
+                                        {t("Device Tracking")}
+                                    </span>
+                                </div>
+
+                                <div className="p-5 space-y-4">
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <input
+                                            type="checkbox"
+                                            className="toggle toggle-primary"
+                                            checked={!!productForm.data.is_tracking_enabled}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                productForm.setData("is_tracking_enabled", checked);
+
+                                                if (checked) {
+                                                    productForm.setData("unit_type", "piece");
+                                                    productForm.setData("default_unit", "piece");
+                                                    productForm.setData("min_sale_unit", "piece");
+                                                    productForm.setData("is_fraction_allowed", false);
+                                                } else {
+                                                    productForm.setData("tracking_type", "");
+                                                }
+                                            }}
+                                        />
+                                        <div className="flex-1">
+                                            <span className="text-sm font-bold text-slate-700 block">
+                                                {t("Enable IMEI / Serial Tracking")}
+                                            </span>
+                                            <span className="text-xs text-slate-500">
+                                                {t("Use this for mobile, laptop, desktop, computer accessories with unique serials")}
+                                            </span>
+                                        </div>
+                                    </label>
+
+                                    {productForm.data.is_tracking_enabled && (
+                                        <div className="form-control">
+                                            <label className="label py-1">
+                                                <span className="label-text text-xs font-bold">{t("Tracking Type")}</span>
+                                            </label>
+
+                                            <div className="flex gap-4">
+                                                {["imei", "serial"].map((type) => (
+                                                    <label
+                                                        key={type}
+                                                        className={`flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md border ${productForm.data.tracking_type === type
+                                                                ? "border-primary text-primary bg-primary/5"
+                                                                : "border-gray-300 text-slate-600"
+                                                            }`}
+                                                    >
+                                                        <input
+                                                            type="radio"
+                                                            name="tracking_type"
+                                                            value={type}
+                                                            checked={productForm.data.tracking_type === type}
+                                                            onChange={() => productForm.setData("tracking_type", type)}
+                                                            className="radio radio-xs hidden"
+                                                        />
+                                                        <span className="text-sm font-medium uppercase">{type}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+
+                                            {formErrors.tracking_type && (
+                                                <span className="text-error text-xs mt-1">{formErrors.tracking_type}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             {formErrors.is_fraction_allowed && <span className="text-error text-xs mt-1">{formErrors.is_fraction_allowed}</span>}
                         </div>
@@ -754,11 +829,10 @@ export default function AddProduct({ category, update, brand, attributes, errors
                                                                         return next;
                                                                     });
                                                                 }}
-                                                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                                                                    isSelected
-                                                                        ? "bg-primary text-white shadow-md shadow-primary/20"
-                                                                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                                                }`}
+                                                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isSelected
+                                                                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                                                                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                                                    }`}
                                                             >
                                                                 {val.value}
                                                             </button>

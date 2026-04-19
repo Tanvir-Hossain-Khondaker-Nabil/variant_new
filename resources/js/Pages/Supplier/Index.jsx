@@ -985,7 +985,7 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             <input
                                                 type="number"
                                                 name="paid_amount"
-                                                step="0.01"
+                                                
                                                 min="0.01"
                                                 max={calculateDueAmount(
                                                     selectedSupplier.purchases,
@@ -1609,7 +1609,7 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             <input
                                                 type="number"
                                                 name="amount"
-                                                step="0.01"
+                                                
                                                 min="0.01"
                                                 value={paymentData.amount}
                                                 onChange={
@@ -2721,7 +2721,7 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
+                                                // 
                                                 // min="0"
                                                 value={supplierForm.data.advance_amount}
                                                 onChange={(e) =>
@@ -2762,7 +2762,7 @@ export default function Suppliers({ suppliers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
+                                                // 
                                                 // min="0"
                                                 value={
                                                     supplierForm.data.due_amount

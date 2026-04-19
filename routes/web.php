@@ -1,60 +1,63 @@
 <?php
 
-use Inertia\Inertia;
-use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Artisan;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\PlanController;
-use App\Http\Controllers\RankController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\AwardController;
-use App\Http\Controllers\BrandController;
-use App\Http\Controllers\LeaveController;
-use App\Http\Controllers\SalesController;
-use App\Http\Controllers\DamageController;
-use App\Http\Controllers\HeaderController;
-use App\Http\Controllers\LadgerController;
-use App\Http\Controllers\LedgerController;
-use App\Http\Controllers\ModuleController;
-use App\Http\Controllers\OutletController;
-use App\Http\Controllers\SalaryController;
-use App\Http\Controllers\SectorController;
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\CompanyController;
-use App\Http\Controllers\ExpenseController;
-use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\CustomerController;
-use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\ExchangeController;
-use App\Http\Controllers\InvestorController;
-use App\Http\Controllers\PurchaseController;
-use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\AllowanceController;
-use App\Http\Controllers\AttributeController;
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ExtraCashController;
-use App\Http\Controllers\SalesListController;
-use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\AttendanceController;
-use App\Http\Controllers\DealershipController;
-use App\Http\Controllers\InvestmentController;
-use App\Http\Controllers\InstallmentController;
-use App\Http\Controllers\SalesReturnController;
-use App\Http\Controllers\SmsTemplateController;
-use App\Http\Controllers\UserDepositController;
+use App\Http\Controllers\AttributeController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AwardController;
 use App\Http\Controllers\BarcodePrintController;
 use App\Http\Controllers\BonusSettingController;
-use App\Http\Controllers\SubscriptionController;
-use App\Http\Controllers\UserSubscriptionsController;
-use App\Http\Controllers\ProvidentFundController;
-use App\Http\Controllers\PurchaseReturnController;
+use App\Http\Controllers\BorrowerController;
+use App\Http\Controllers\BrandController;
+use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\Controller;
+use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DamageController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DealershipController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\ExchangeController;
+use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ExtraCashController;
+use App\Http\Controllers\HeaderController;
+use App\Http\Controllers\InstallmentController;
+use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\InvestmentReturnController;
+use App\Http\Controllers\InvestorController;
+use App\Http\Controllers\LadgerController;
+use App\Http\Controllers\LeaveController;
+use App\Http\Controllers\LedgerController;
+use App\Http\Controllers\LoanController;
+use App\Http\Controllers\LoanRepaymentController;
+use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\SystemController;
+use App\Http\Controllers\OutletController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PlanController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProvidentFundController;
+use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\PurchaseReturnController;
+use App\Http\Controllers\RankController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SalaryController;
+use App\Http\Controllers\SalesController;
+use App\Http\Controllers\SalesListController;
+use App\Http\Controllers\SalesReturnController;
+use App\Http\Controllers\SectorController;
+use App\Http\Controllers\SmsTemplateController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SystemController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserDepositController;
+use App\Http\Controllers\UserSubscriptionsController;
+use App\Http\Controllers\WarehouseController;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 
 // Guest routes
@@ -65,7 +68,7 @@ Route::middleware('guest')->controller(AuthController::class)->group(function ()
 
 
 // auth routes
-Route::middleware(['auth', 'active.subscription','check.system'])->group(function () {
+Route::middleware(['auth', 'active.subscription', 'check.system'])->group(function () {
 
     Route::get('/dashboard/{s?}', [DashboardController::class, 'index'])->middleware('permission:dashboard.view')->name('home');
 
@@ -125,11 +128,11 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
 
     Route::controller(UserController::class)->prefix('users')->group(function () {
         Route::post('/hold/{id}', 'hold')
-        ->middleware('permission:users.hold')
-        ->name('users.hold');
+            ->middleware('permission:users.hold')
+            ->name('users.hold');
         Route::post('/active/{id}', 'active')
-        ->middleware('permission:users.active')
-        ->name('users.active');
+            ->middleware('permission:users.active')
+            ->name('users.active');
     });
 
     Route::get('api/sales/{batch_no}', [SalesController::class, 'stockInvoice']);
@@ -543,32 +546,32 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
     ])->middleware('permission:subscriptions.view|subscriptions.create|subscriptions.edit|subscriptions.delete');
 
     Route::get('/subscriptions/{id}/renew', [SubscriptionController::class, 'renewEdit'])
-    ->middleware('permission:subscriptions.renew')->name('subscriptions.renew_edit');
+        ->middleware('permission:subscriptions.renew')->name('subscriptions.renew_edit');
 
 
 
     // user subscriptions controller
     Route::get('user_subscriptions/create', [UserSubscriptionsController::class, 'create'])
-    ->middleware('permission:user_subscriptions.create')
-    ->name('user_subscriptions.create');
+        ->middleware('permission:user_subscriptions.create')
+        ->name('user_subscriptions.create');
     Route::get('/user_subscriptions', [UserSubscriptionsController::class, 'index'])
-    ->middleware('permission:user_subscriptions.view')
-    ->name('user_subscriptions.index');
+        ->middleware('permission:user_subscriptions.view')
+        ->name('user_subscriptions.index');
     Route::get('/user_subscriptions/{id}/renew', [UserSubscriptionsController::class, 'renewEdit'])
-    ->middleware('permission:user_subscriptions.renew')
-    ->name('user_subscriptions.renew_edit');
+        ->middleware('permission:user_subscriptions.renew')
+        ->name('user_subscriptions.renew_edit');
     Route::get('/user_subscriptions/{id}/show', [UserSubscriptionsController::class, 'show'])
-    ->middleware('permission:user_subscriptions.view')
-    ->name('user_subscriptions.show');
+        ->middleware('permission:user_subscriptions.view')
+        ->name('user_subscriptions.show');
     Route::post('/user_subscriptions', [UserSubscriptionsController::class, 'store'])
-    ->middleware('permission:user_subscriptions.create')
-    ->name('user_subscriptions.store');
+        ->middleware('permission:user_subscriptions.create')
+        ->name('user_subscriptions.store');
     Route::get('/user_subscriptions/{id}', [UserSubscriptionsController::class, 'edit'])
-    ->middleware('permission:user_subscriptions.edit')
-    ->name('user_subscriptions.edit');
+        ->middleware('permission:user_subscriptions.edit')
+        ->name('user_subscriptions.edit');
     Route::post('/user_subscriptions/{id}', [UserSubscriptionsController::class, 'renew'])
-    ->middleware('permission:user_subscriptions.renew')
-    ->name('user_subscriptions.renew');
+        ->middleware('permission:user_subscriptions.renew')
+        ->name('user_subscriptions.renew');
 
 
 
@@ -749,82 +752,82 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
         ->middleware('permission:purchase.list_index')
         ->name('purchase.list_index');
 
-    
+
     // All reports route will be here 
     Route::controller(ReportController::class)->prefix('reports')->group(function () {
         Route::get('/sales', 'salesReport')
-        ->name('reports.sales');
+            ->name('reports.sales');
         Route::get('/sales/export', 'exportSalesReport')
-        ->name('reports.sales.export');
+            ->name('reports.sales.export');
 
 
         Route::get('/sales/items', 'salesItemReport')
-        ->name('reports.sales.items');
-         Route::get('/sales/items/export', 'exportSalesItemReport')
-        ->name('reports.sales-items.export');
+            ->name('reports.sales.items');
+        Route::get('/sales/items/export', 'exportSalesItemReport')
+            ->name('reports.sales-items.export');
 
 
         Route::get('/purchases', 'purchaseReport')
-        ->name('reports.purchase');
+            ->name('reports.purchase');
         Route::get('/purchases/export', 'exportPurchaseReport')
-        ->name('reports.purchase.export');
+            ->name('reports.purchase.export');
 
 
         Route::get('/purchases/items', 'purchaseItemsReport')
-        ->name('reports.purchase.items');
-            Route::get('/purchases/items/export', 'exportPurchaseItemsReport')
-        ->name('reports.purchase-items.export');
+            ->name('reports.purchase.items');
+        Route::get('/purchases/items/export', 'exportPurchaseItemsReport')
+            ->name('reports.purchase-items.export');
 
 
         Route::get('/customer', 'customerReport')
-        ->name('reports.customer');
-            Route::get('/customer/export', 'exportCustomerReport')
-        ->name('reports.customer.export');
+            ->name('reports.customer');
+        Route::get('/customer/export', 'exportCustomerReport')
+            ->name('reports.customer.export');
 
 
         Route::get('/supplier', 'supplierReport')
-        ->name('reports.supplier');
+            ->name('reports.supplier');
         Route::get('/supplier/export', 'exportSupplierReport')
-        ->name('reports.supplier.export');
+            ->name('reports.supplier.export');
 
 
         Route::get('/transaction', 'transactionReport')
-        ->name('reports.transaction');
+            ->name('reports.transaction');
         Route::get('/transaction/export', 'exportTransactionReport')
-        ->name('reports.transaction.export');
+            ->name('reports.transaction.export');
 
 
         Route::get('/account', 'accountReport')
-        ->name('reports.account');
+            ->name('reports.account');
         Route::get('/reports/account/export', 'exportAccountReport')
-        ->name('reports.account.export');
+            ->name('reports.account.export');
 
 
         Route::get('/expense', 'expenseReport')
-        ->name('reports.expense');
+            ->name('reports.expense');
         Route::get('/reports/expense/export', 'exportExpenseReport')
-        ->name('reports.expense.export');
+            ->name('reports.expense.export');
 
 
         Route::get('/product', 'productReport')
-        ->name('reports.product');
+            ->name('reports.product');
         Route::get('/reports/product/export', 'exportProductReport')
-        ->name('reports.product.export');
+            ->name('reports.product.export');
 
 
         Route::get('/sales-return', 'salesReturnReport')
-        ->name('reports.sales-return');
+            ->name('reports.sales-return');
         Route::get('/reports/sales-return/export', 'exportSalesReturnsReport')
-        ->name('reports.sales-return.export');
+            ->name('reports.sales-return.export');
 
-        
+
         Route::get('/purchase-return', 'purchaseReturnReport')
-        ->name('reports.purchase-return');
+            ->name('reports.purchase-return');
         Route::get('/reports/purchase-return/export', 'exportPurchaseReturnsReport')
-        ->name('reports.purchase-return.export');
+            ->name('reports.purchase-return.export');
 
         Route::get('/damages', 'damageReport')
-        ->name('reports.damage');
+            ->name('reports.damage');
     });
 
 
@@ -870,6 +873,46 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
     Route::post('/investment-returns/{investmentReturn}/mark-paid', [InvestmentReturnController::class, 'markPaid'])
         ->name('investmentReturns.markPaid')->middleware('permission:investments.returns.mark_paid');
 
+    Route::resource('borrowers', BorrowerController::class)->except(['create', 'edit']);
+
+    Route::prefix('loans')->group(function () {
+        Route::get('/', [LoanController::class, 'index'])
+            ->name('loans.index')->middleware('permission:loans.view');
+
+        Route::post('/', [LoanController::class, 'store'])
+            ->name('loans.store')->middleware('permission:loans.create');
+
+        Route::put('/{loan}', [LoanController::class, 'update'])
+            ->name('loans.update')->middleware('permission:loans.edit');
+
+        Route::delete('/{loan}', [LoanController::class, 'destroy'])
+            ->name('loans.destroy')->middleware('permission:loans.delete');
+
+        Route::get('/{loan}', [LoanController::class, 'show'])
+            ->name('loans.show')->middleware('permission:loans.view');
+
+        Route::post('/{loan}/approve', [LoanController::class, 'approve'])
+            ->name('loans.approve')->middleware('permission:loans.approve');
+
+        Route::post('/{loan}/reject', [LoanController::class, 'reject'])
+            ->name('loans.reject')->middleware('permission:loans.reject');
+
+        Route::post('/{loan}/disburse', [LoanController::class, 'disburse'])
+            ->name('loans.disburse')->middleware('permission:loans.disburse');
+
+        Route::post('/{loan}/close', [LoanController::class, 'close'])
+            ->name('loans.close')->middleware('permission:loans.close');
+    });
+
+    Route::prefix('loan-repayments')->group(function () {
+        Route::get('/', [LoanRepaymentController::class, 'index'])
+            ->name('loanRepayments.index')->middleware('permission:loans.repayments.view');
+
+        Route::post('/collect', [LoanRepaymentController::class, 'collect'])
+            ->name('loanRepayments.collect')->middleware('permission:loans.repayments.collect');
+    });
+
+
     // Headers
     Route::resource('headers', HeaderController::class)
         ->middleware('permission:headers.index|headers.create|headers.edit|headers.delete|headers.show');
@@ -881,8 +924,8 @@ Route::middleware(['auth', 'active.subscription','check.system'])->group(functio
         ->name('system.index');
 
     Route::put('/systems/{id}', [SystemController::class, 'update'])
-    ->middleware('permission:system.edit')
-    ->name('systems.update');
+        ->middleware('permission:system.edit')
+        ->name('systems.update');
 
 
     //notifications

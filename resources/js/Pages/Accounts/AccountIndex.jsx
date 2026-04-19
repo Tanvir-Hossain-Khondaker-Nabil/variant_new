@@ -647,7 +647,7 @@ function TransferForm({ accounts }) {
                 </label>
                 <input
                     type="number"
-                    step="0.01"
+                    
                     min="0.01"
                     value={data.amount}
                     onChange={(e) => setData("amount", e.target.value)}

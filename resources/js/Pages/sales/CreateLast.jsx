@@ -1317,7 +1317,7 @@ export default function AddSale({
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            
                                             className="input input-bordered input-sm w-full font-mono"
                                             value={paidAmount}
                                             onChange={handleManualPaymentInput}
@@ -1592,7 +1592,7 @@ export default function AddSale({
                                             type="number"
                                             min="0"
                                             max="100"
-                                            step="0.01"
+                                            
                                             className="input input-bordered input-sm w-20"
                                             value={vatRate}
                                             onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)}
@@ -1608,7 +1608,7 @@ export default function AddSale({
                                             type="number"
                                             min="0"
                                             max="100"
-                                            step="0.01"
+                                            
                                             className="input input-bordered input-sm w-20"
                                             value={discountRate}
                                             onChange={(e) => setDiscountRate(parseFloat(e.target.value) || 0)}
@@ -1857,7 +1857,7 @@ export default function AddSale({
                                         value={pickupUnitPrice}
                                         onChange={(e) => setPickupUnitPrice(e.target.value)}
                                         min="0"
-                                        step="0.01"
+                                        
                                     />
                                 </div>
                                 <div className="form-control">
@@ -1868,7 +1868,7 @@ export default function AddSale({
                                         value={pickupSalePrice}
                                         onChange={(e) => setPickupSalePrice(e.target.value)}
                                         min="0"
-                                        step="0.01"
+                                        
                                     />
                                 </div>
                             </div>
@@ -1965,7 +1965,7 @@ const SelectedItemCard = ({
                     </label>
                     <input
                         type="number"
-                        step="0.01"
+                        
                         className="input input-bordered input-sm"
                         value={item.unit_price}
                         onChange={(e) => onUpdateItem(index, "unit_price", e.target.value)}

@@ -226,25 +226,27 @@ export default function SaleShow({
         hasValue(it?.unit_price)
           ? it.unit_price
           : hasValue(it?.price)
-          ? it.price
-          : hasValue(it?.selling_price)
-          ? it.selling_price
-          : hasValue(it?.rate)
-          ? it.rate
-          : 0
+            ? it.price
+            : hasValue(it?.selling_price)
+              ? it.selling_price
+              : hasValue(it?.rate)
+                ? it.rate
+                : 0
       );
 
       const total = toNum(
         hasValue(it?.total_price)
           ? it.total_price
           : hasValue(it?.subtotal)
-          ? it.subtotal
-          : hasValue(it?.amount)
-          ? it.amount
-          : unitPrice * qty
+            ? it.subtotal
+            : hasValue(it?.amount)
+              ? it.amount
+              : unitPrice * qty
       );
 
-      return { name, qty, unitName, unitPrice, total };
+      const identifiers = Array.isArray(it?.identifiers) ? it.identifiers : [];
+
+      return { name, qty, unitName, unitPrice, total, identifiers };
     });
   }, [posItems]);
 
@@ -286,10 +288,10 @@ export default function SaleShow({
       hasValue(sale?.grand_total)
         ? sale.grand_total
         : hasValue(sale?.net_payable)
-        ? sale.net_payable
-        : hasValue(sale?.net_total)
-        ? sale.net_total
-        : 0
+          ? sale.net_payable
+          : hasValue(sale?.net_total)
+            ? sale.net_total
+            : 0
     );
 
     if (net) return net;
@@ -301,10 +303,10 @@ export default function SaleShow({
       hasValue(sale?.cash_paid)
         ? sale.cash_paid
         : hasValue(sale?.paid_amount)
-        ? sale.paid_amount
-        : hasValue(sale?.payment?.amount)
-        ? sale.payment.amount
-        : 0
+          ? sale.paid_amount
+          : hasValue(sale?.payment?.amount)
+            ? sale.payment.amount
+            : 0
     );
   }, [sale]);
 
@@ -782,7 +784,20 @@ export default function SaleShow({
                 <div key={idx} className="posTrow">
                   <div className="posCell posSL">{toBanglaDigit(idx + 1)}</div>
                   <div className="posCell posName" title={r.name}>
-                    {r.name}
+                    <div>{r.name}</div>
+
+                    {Array.isArray(r.identifiers) && r.identifiers.length > 0 && (
+                      <div style={{ marginTop: "1mm", fontSize: "9px", lineHeight: "1.25" }}>
+                        {r.identifiers.map((identifier, idx) => (
+                          <div key={identifier.id || idx}>
+                            <span style={{ fontWeight: 700, textTransform: "uppercase" }}>
+                              {identifier.identifier_type}:
+                            </span>{" "}
+                            <span>{identifier.identifier_value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="posCell posUnit">
                     {formatMoneyBn(r.unitPrice)}

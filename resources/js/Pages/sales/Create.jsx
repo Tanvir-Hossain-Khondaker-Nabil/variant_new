@@ -80,6 +80,7 @@ export default function AddSale({
     const [newSupplierCompany, setNewSupplierCompany] = useState("");
     const [newSupplierPhone, setNewSupplierPhone] = useState("");
     const [showProductDropdown, setShowProductDropdown] = useState(false);
+    const [selectedIdentifiers, setSelectedIdentifiers] = useState({});
 
     // State for product selection flow
     const [selectedProduct, setSelectedProduct] = useState(null);
@@ -109,6 +110,26 @@ export default function AddSale({
     const [pickupQuantity, setPickupQuantity] = useState(1);
     const [pickupUnitPrice, setPickupUnitPrice] = useState(null);
     const [pickupSalePrice, setPickupSalePrice] = useState(null);
+
+    const getSelectedIdentifierValues = (itemKey) => {
+        return Array.isArray(selectedIdentifiers[itemKey])
+            ? selectedIdentifiers[itemKey]
+            : [];
+    };
+
+    const updateSelectedIdentifier = (itemKey, slotIndex, identifierId) => {
+        setSelectedIdentifiers((prev) => {
+            const current = Array.isArray(prev[itemKey]) ? [...prev[itemKey]] : [];
+            current[slotIndex] = identifierId ? Number(identifierId) : "";
+
+            return {
+                ...prev,
+                [itemKey]: current,
+            };
+        });
+    };
+
+
 
     // BARCODE SCANNER
     const barcodeRef = useRef(null);
@@ -321,12 +342,14 @@ export default function AddSale({
                         totalQuantity: 0,
                         sale_price: stock.sale_price || 0,
                         purchase_price: stock.purchase_price || 0,
+                        identifiers: [], // add
                     });
                 }
 
                 const batch = variant.batches.get(batchKey);
                 batch.stocks.push(stock);
                 batch.totalQuantity += Number(stock.quantity) || 0;
+                batch.identifiers.push(...(stock.identifiers || []));
             }
         });
 
@@ -342,9 +365,33 @@ export default function AddSale({
         }
 
         const searchTerm = productSearch.toLowerCase();
+
         const filtered = allProducts.filter((product) => {
-            return product.name.toLowerCase().includes(searchTerm) ||
-                (product.product_no && product.product_no.toLowerCase().includes(searchTerm));
+            // product level match
+            const productMatch =
+                product.name?.toLowerCase().includes(searchTerm) ||
+                product.product_no?.toLowerCase().includes(searchTerm) ||
+                product.code?.toLowerCase().includes(searchTerm);
+
+            // stock / batch / imei / serial match
+            const stockMatch = (product.stocks || []).some((stock) => {
+                const batchNo = String(stock.batch_no || "").toLowerCase();
+                const barcode = String(stock.barcode || "").toLowerCase();
+                const sku = String(stock.variant?.sku || "").toLowerCase();
+
+                const identifierMatch = (stock.identifiers || []).some((identifier) =>
+                    String(identifier.identifier_value || "").toLowerCase().includes(searchTerm)
+                );
+
+                return (
+                    batchNo.includes(searchTerm) ||
+                    barcode.includes(searchTerm) ||
+                    sku.includes(searchTerm) ||
+                    identifierMatch
+                );
+            });
+
+            return productMatch || stockMatch;
         });
 
         setFilteredProducts(filtered);
@@ -385,7 +432,8 @@ export default function AddSale({
                     sale_price: batchData.sale_price,
                     purchase_price: batchData.purchase_price,
                     stocks: batchData.stocks,
-                    unit: batchData.stocks[0]?.unit || product.default_unit || 'piece',
+                    unit: batchData.stocks[0]?.unit || product.default_unit || "piece",
+                    identifiers: batchData.identifiers || [],
                 });
             });
 
@@ -435,33 +483,28 @@ export default function AddSale({
     const addToCart = (product, variant, batch, stock) => {
         const selectedSalePrice = Number(batch.sale_price) || Number(stock.sale_price) || 0;
 
-        // Get product details
         const pDetails = getProductDetails(product.id);
         setProductDetails((prev) => ({
             ...prev,
             [product.id]: pDetails,
         }));
 
-        // Get available units
         const availableUnitsForStock = getAvailableUnitsForProduct(product, stock);
 
-        // Determine default sale unit
         let defaultUnit = pDetails?.min_sale_unit || product.default_unit || "piece";
         if (!availableUnitsForStock.includes(defaultUnit)) {
             defaultUnit = availableUnitsForStock[0] || "piece";
         }
 
-        // Calculate base price
         let basePricePerBaseUnit = selectedSalePrice;
         if (pDetails?.unit_type && pDetails.unit_type !== "piece") {
             basePricePerBaseUnit = calculateBasePricePerBaseUnit(
                 selectedSalePrice,
-                stock.unit || 'piece',
+                stock.unit || "piece",
                 pDetails.unit_type
             );
         }
 
-        // Calculate price in sale unit
         let unitPriceInSaleUnit = selectedSalePrice;
         if (stock.unit !== defaultUnit && pDetails?.unit_type) {
             unitPriceInSaleUnit = calculatePriceForUnit(
@@ -471,18 +514,32 @@ export default function AddSale({
             );
         }
 
-        // Create attribute display
         const attributeDisplay = variant.attributes
-            .map(attr => `${attr.key}: ${attr.value}`)
-            .join(' | ');
+            .map((attr) => `${attr.key}: ${attr.value}`)
+            .join(" | ");
 
-        // Create unique key with batch number
         const itemKey = `${product.id}-${variant.id}-${batch.batch_no || "default"}`;
         const existingItem = selectedItems.find((item) => item.uniqueKey === itemKey);
 
+        const isTrackedProduct =
+            !!product.is_tracking_enabled &&
+            (product.tracking_type === "imei" || product.tracking_type === "serial");
+
+        const batchIdentifiers = Array.isArray(batch.identifiers) ? batch.identifiers : [];
+        const availableIdentifiers = batchIdentifiers.filter(
+            (x) => String(x?.status || "").toLowerCase() === "available"
+        );
+
         if (existingItem) {
-            // Update existing item
             const newQuantity = (existingItem.unit_quantity || 1) + 1;
+
+            if (existingItem.is_tracking_enabled && newQuantity > availableIdentifiers.length) {
+                alert(
+                    `Only ${availableIdentifiers.length} ${existingItem.tracking_type} available for this item`
+                );
+                return;
+            }
+
             const newTotalPrice = newQuantity * existingItem.unit_price;
 
             setSelectedItems(
@@ -493,13 +550,39 @@ export default function AddSale({
                             unit_quantity: newQuantity,
                             quantity: newQuantity,
                             total_price: newTotalPrice,
+                            available_identifiers: availableIdentifiers,
                         }
                         : item
                 )
             );
+
             setUnitQuantities((prev) => ({ ...prev, [itemKey]: newQuantity }));
+
+            // tracked হলে qty অনুযায়ী auto assign/update
+            if (existingItem.is_tracking_enabled) {
+                setSelectedIdentifiers((prev) => {
+                    const current = Array.isArray(prev[itemKey]) ? prev[itemKey].filter(Boolean) : [];
+
+                    const next = [...current];
+
+                    for (let i = 0; i < newQuantity; i++) {
+                        if (!next[i]) {
+                            const candidate = availableIdentifiers.find(
+                                (identifier) => !next.includes(Number(identifier.id))
+                            );
+                            if (candidate) {
+                                next[i] = Number(candidate.id);
+                            }
+                        }
+                    }
+
+                    return {
+                        ...prev,
+                        [itemKey]: next.slice(0, newQuantity),
+                    };
+                });
+            }
         } else {
-            // Add new item
             const newItem = {
                 uniqueKey: itemKey,
                 product_id: product.id,
@@ -511,38 +594,69 @@ export default function AddSale({
                 product_code: product.product_no || "",
                 quantity: 1,
                 unit_quantity: 1,
-                unit: defaultUnit,
+                unit: isTrackedProduct ? "piece" : defaultUnit,
                 sku: variant.sku || "Default SKU",
                 stockQuantity: Number(batch.totalQuantity) || 0,
-                stockBaseQuantity: Number(stock.base_quantity) || Number(batch.totalQuantity) || 0,
+                stockBaseQuantity:
+                    Number(stock.base_quantity) || Number(batch.totalQuantity) || 0,
                 stockId: stock.id,
-                original_purchase_unit: stock.unit || 'piece',
+                original_purchase_unit: stock.unit || "piece",
                 original_sale_price: selectedSalePrice,
                 unit_price: unitPriceInSaleUnit,
                 sell_price: unitPriceInSaleUnit,
                 total_price: unitPriceInSaleUnit,
                 product_unit_type: pDetails?.unit_type || "piece",
-                is_fraction_allowed: pDetails?.is_fraction_allowed || false,
+                is_fraction_allowed: isTrackedProduct
+                    ? false
+                    : (pDetails?.is_fraction_allowed || false),
                 stockDetails: stock,
                 base_price_per_base_unit: basePricePerBaseUnit,
+
+                is_tracking_enabled: isTrackedProduct,
+                tracking_type: product.tracking_type || null,
+                available_identifiers: availableIdentifiers,
             };
 
             setSelectedItems([...selectedItems, newItem]);
-            setSelectedUnits((prev) => ({ ...prev, [itemKey]: defaultUnit }));
-            setUnitQuantities((prev) => ({ ...prev, [itemKey]: 1 }));
+
+            setSelectedUnits((prev) => ({
+                ...prev,
+                [itemKey]: isTrackedProduct ? "piece" : defaultUnit,
+            }));
+
+            setUnitQuantities((prev) => ({
+                ...prev,
+                [itemKey]: 1,
+            }));
+
             setAvailableUnits((prev) => ({
                 ...prev,
-                [itemKey]: availableUnitsForStock,
+                [itemKey]: isTrackedProduct ? ["piece"] : availableUnitsForStock,
             }));
-            setStockDetails((prev) => ({ ...prev, [itemKey]: stock }));
+
+            setStockDetails((prev) => ({
+                ...prev,
+                [itemKey]: stock,
+            }));
+
             setBasePrices((prev) => ({
                 ...prev,
                 [itemKey]: basePricePerBaseUnit,
             }));
-            setPriceManuallyEdited((prev) => ({ ...prev, [itemKey]: false }));
-        }
 
-        // Reset selection
+            setPriceManuallyEdited((prev) => ({
+                ...prev,
+                [itemKey]: false,
+            }));
+
+            // AUTO SELECT FIRST IDENTIFIER
+            if (isTrackedProduct) {
+                setSelectedIdentifiers((prev) => ({
+                    ...prev,
+                    [itemKey]: availableIdentifiers.slice(0, 1).map((x) => Number(x.id)),
+                }));
+            }
+        }
         setSelectedProduct(null);
         setSelectedVariant(null);
         setSelectedBatch(null);
@@ -567,13 +681,18 @@ export default function AddSale({
                 const productNo = String(stock.product?.product_no || "").trim().toLowerCase();
                 const productCode = String(stock.product?.code || "").trim().toLowerCase();
 
+                const identifierMatched = (stock.identifiers || []).some((identifier) => {
+                    return String(identifier.identifier_value || "").trim().toLowerCase() === normalizedCode;
+                });
+
                 return (
                     stockBarcode === normalizedCode ||
                     stockCode === normalizedCode ||
                     variantSku === normalizedCode ||
                     productNo === normalizedCode ||
                     productCode === normalizedCode ||
-                    batchNo === normalizedCode
+                    batchNo === normalizedCode ||
+                    identifierMatched
                 );
             });
 
@@ -603,6 +722,7 @@ export default function AddSale({
                                     batchData.stocks[0]?.unit ||
                                     product.default_unit ||
                                     "piece",
+                                identifiers: batchData.identifiers || [],
                             })),
                             unit:
                                 variantData.stocks[0]?.unit ||
@@ -659,6 +779,7 @@ export default function AddSale({
                             batchData.stocks[0]?.unit ||
                             product.default_unit ||
                             "piece",
+                        identifiers: batchData.identifiers || [],
                     })),
                     unit:
                         variantData.stocks[0]?.unit ||
@@ -746,8 +867,13 @@ export default function AddSale({
         if (itemIndex === -1) return;
 
         const item = selectedItems[itemIndex];
-        const oldUnit = item.unit;
 
+        if (item.is_tracking_enabled && newUnit !== "piece") {
+            alert("Tracked product must be sold in piece unit");
+            return;
+        }
+
+        const oldUnit = item.unit;
         if (oldUnit === newUnit) return;
 
         const availableUnitsList = availableUnits[itemKey] || [item.unit];
@@ -831,6 +957,24 @@ export default function AddSale({
                 return;
             }
 
+            if (item.is_tracking_enabled) {
+                if (numValue % 1 !== 0) {
+                    alert("Tracked product quantity must be whole number");
+                    return;
+                }
+
+                const availableIdentifierCount = Array.isArray(item.available_identifiers)
+                    ? item.available_identifiers.length
+                    : 0;
+
+                if (numValue > availableIdentifierCount) {
+                    alert(
+                        `Only ${availableIdentifierCount} ${item.tracking_type} available for this item`
+                    );
+                    return;
+                }
+            }
+
             if (item.product_unit_type && item.product_unit_type !== "piece") {
                 const requestedBaseQty = convertToBase(
                     numValue,
@@ -847,7 +991,9 @@ export default function AddSale({
                         item.product_unit_type
                     );
                     alert(
-                        `Exceeds available stock! Available: ${availableInUnit.toFixed(3)} ${item.unit.toUpperCase()}`
+                        `Exceeds available stock! Available: ${availableInUnit.toFixed(
+                            3
+                        )} ${item.unit.toUpperCase()}`
                     );
                     return;
                 }
@@ -860,8 +1006,36 @@ export default function AddSale({
             updated[index].quantity = numValue;
             setUnitQuantities((prev) => ({ ...prev, [itemKey]: numValue }));
             updated[index].total_price = numValue * updated[index].unit_price;
-        }
-        else if (field === "unit_price" || field === "sell_price") {
+
+            if (item.is_tracking_enabled) {
+                setSelectedIdentifiers((prev) => {
+                    const current = Array.isArray(prev[itemKey]) ? [...prev[itemKey]] : [];
+                    const qty = parseInt(numValue || 0, 10);
+
+                    let next = current.slice(0, qty);
+
+                    const used = new Set(next.filter(Boolean).map(Number));
+
+                    for (let i = 0; i < qty; i++) {
+                        if (!next[i]) {
+                            const candidate = (item.available_identifiers || []).find(
+                                (identifier) => !used.has(Number(identifier.id))
+                            );
+
+                            if (candidate) {
+                                next[i] = Number(candidate.id);
+                                used.add(Number(candidate.id));
+                            }
+                        }
+                    }
+
+                    return {
+                        ...prev,
+                        [itemKey]: next,
+                    };
+                });
+            }
+        } else if (field === "unit_price" || field === "sell_price") {
             const numValue = parseFloat(value) || 0;
 
             if (numValue < 0) {
@@ -881,7 +1055,10 @@ export default function AddSale({
                     item.product_unit_type
                 );
                 updated[index].base_price_per_base_unit = newBasePricePerBaseUnit;
-                setBasePrices((prev) => ({ ...prev, [itemKey]: newBasePricePerBaseUnit }));
+                setBasePrices((prev) => ({
+                    ...prev,
+                    [itemKey]: newBasePricePerBaseUnit,
+                }));
             }
         }
 
@@ -899,6 +1076,7 @@ export default function AddSale({
         const newStockDetails = { ...stockDetails };
         const newBasePrices = { ...basePrices };
         const newPriceManuallyEdited = { ...priceManuallyEdited };
+        const newSelectedIdentifiers = { ...selectedIdentifiers };
 
         delete newSelectedUnits[itemKey];
         delete newUnitQuantities[itemKey];
@@ -906,6 +1084,7 @@ export default function AddSale({
         delete newStockDetails[itemKey];
         delete newBasePrices[itemKey];
         delete newPriceManuallyEdited[itemKey];
+        delete newSelectedIdentifiers[itemKey];
 
         setSelectedUnits(newSelectedUnits);
         setUnitQuantities(newUnitQuantities);
@@ -913,6 +1092,7 @@ export default function AddSale({
         setStockDetails(newStockDetails);
         setBasePrices(newBasePrices);
         setPriceManuallyEdited(newPriceManuallyEdited);
+        setSelectedIdentifiers(newSelectedIdentifiers);
 
         updated.splice(index, 1);
         setSelectedItems(updated);
@@ -1193,6 +1373,11 @@ export default function AddSale({
             unit: item.unit || "piece",
             unit_price: item.unit_price,
             total_price: item.total_price,
+            identifier_ids: item.is_tracking_enabled
+                ? (getSelectedIdentifierValues(item.uniqueKey) || [])
+                    .filter((value) => value !== "" && value !== null && value !== undefined)
+                    .map((value) => Number(value))
+                : [],
         }));
 
         const formattedPickupItems = pickupItems.map((item) => ({
@@ -1274,8 +1459,29 @@ export default function AddSale({
                 !item.unit_price ||
                 item.unit_price <= 0
         );
+
         if (invalidItems.length > 0) {
             alert("Please ensure all items have valid quantity and unit price");
+            return;
+        }
+
+        const trackedInvalidItems = selectedItems.filter((item) => {
+            if (!item.is_tracking_enabled) return false;
+
+            const qty = parseInt(item.unit_quantity || item.quantity || 0, 10);
+            const selected = (getSelectedIdentifierValues(item.uniqueKey) || []).filter(Boolean);
+            const unique = new Set(selected.map(String));
+
+            if (item.unit !== "piece") return true;
+            if (qty <= 0) return true;
+            if (selected.length !== qty) return true;
+            if (unique.size !== selected.length) return true;
+
+            return false;
+        });
+
+        if (trackedInvalidItems.length > 0) {
+            alert("Tracked items have invalid IMEI / Serial selection");
             return;
         }
 
@@ -1287,7 +1493,10 @@ export default function AddSale({
         form.post(route("sales.store"), {
             onError: (errors) => {
                 console.error(errors);
-                alert(errors.error || "Failed to create sale. Please check the form data.");
+                alert(
+                    errors.error ||
+                    "Failed to create sale. Please check the form data."
+                );
             },
         });
     };
@@ -1463,7 +1672,7 @@ export default function AddSale({
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+
                                             className="input input-bordered input-sm w-full font-mono"
                                             value={paidAmount}
                                             onChange={handleManualPaymentInput}
@@ -1651,6 +1860,8 @@ export default function AddSale({
                                             unitQuantities={unitQuantities}
                                             availableUnits={availableUnits}
                                             priceManuallyEdited={priceManuallyEdited}
+                                            selectedIdentifiers={selectedIdentifiers}
+                                            onUpdateSelectedIdentifier={updateSelectedIdentifier}
                                             onUpdateItem={updateItem}
                                             onRemoveItem={removeItem}
                                             onUnitChange={handleUnitChange}
@@ -1736,7 +1947,7 @@ export default function AddSale({
                                             type="number"
                                             min="0"
                                             max="100"
-                                            step="0.01"
+
                                             className="input input-bordered input-sm w-20"
                                             value={vatRate}
                                             onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)}
@@ -1771,7 +1982,7 @@ export default function AddSale({
                                                 type="number"
                                                 min="0"
                                                 max="100"
-                                                step="0.01"
+
                                                 className="input input-bordered input-sm w-20"
                                                 value={percentageDiscount}
                                                 onChange={(e) => setPercentageDiscount(parseFloat(e.target.value) || 0)}
@@ -1791,7 +2002,7 @@ export default function AddSale({
                                             <input
                                                 type="number"
                                                 min="0"
-                                                step="0.01"
+
                                                 className="input input-bordered input-sm w-28"
                                                 value={flatDiscount}
                                                 onChange={(e) => setFlatDiscount(parseFloat(e.target.value) || 0)}
@@ -2043,8 +2254,8 @@ export default function AddSale({
                                         className="input input-bordered"
                                         value={pickupUnitPrice}
                                         onChange={(e) => setPickupUnitPrice(e.target.value)}
-                                        // min="0"
-                                        // step="0.01"
+                                    // min="0"
+                                    // 
                                     />
                                 </div>
                                 <div className="form-control">
@@ -2054,8 +2265,8 @@ export default function AddSale({
                                         className="input input-bordered"
                                         value={pickupSalePrice}
                                         onChange={(e) => setPickupSalePrice(e.target.value)}
-                                        // min="0"
-                                        // step="0.01"
+                                    // min="0"
+                                    // 
                                     />
                                 </div>
                             </div>
@@ -2079,6 +2290,8 @@ const SelectedItemCard = ({
     unitQuantities,
     availableUnits,
     priceManuallyEdited,
+    selectedIdentifiers,
+    onUpdateSelectedIdentifier,
     onUpdateItem,
     onRemoveItem,
     onUnitChange,
@@ -2087,10 +2300,18 @@ const SelectedItemCard = ({
     convertFromBase
 }) => {
     const itemKey = item.uniqueKey || index;
-    const availableUnitsList = availableUnits[item.uniqueKey] || [item.unit || "piece"];
-    const selectedUnit = selectedUnits[item.uniqueKey] || item.unit || "piece";
-    const unitQuantity = unitQuantities[item.uniqueKey] || item.unit_quantity || 1;
-    const isManuallyEdited = priceManuallyEdited[item.uniqueKey] || false;
+    const availableUnitsList =
+        availableUnits[item.uniqueKey] || [item.unit || "piece"];
+    const selectedUnit =
+        selectedUnits[item.uniqueKey] || item.unit || "piece";
+    const unitQuantity =
+        unitQuantities[item.uniqueKey] || item.unit_quantity || 1;
+    const isManuallyEdited =
+        priceManuallyEdited[item.uniqueKey] || false;
+
+    const selectedForItem = Array.isArray(selectedIdentifiers?.[item.uniqueKey])
+        ? selectedIdentifiers[item.uniqueKey]
+        : [];
 
     return (
         <div className="border border-gray-300 rounded-box p-4">
@@ -2101,28 +2322,44 @@ const SelectedItemCard = ({
                         <strong>Variant:</strong> {item.variant_attribute}
                     </p>
                     <p className="text-sm text-gray-600">
-                        <strong>Batch:</strong> {item.batch_no || 'N/A'}
-                        <span className="text-gray-600"> | <strong>Total Stock:</strong> {item?.stockQuantity || 0}</span>
+                        <strong>Batch:</strong> {item.batch_no || "N/A"}
+                        <span className="text-gray-600">
+                            {" "}
+                            | <strong>Total Stock:</strong> {item?.stockQuantity || 0}
+                        </span>
                     </p>
+                    {item.is_tracking_enabled && (
+                        <p className="text-sm text-amber-700 font-semibold mt-1">
+                            {item.tracking_type === "imei"
+                                ? "IMEI Tracked Product"
+                                : "Serial Tracked Product"}
+                        </p>
+                    )}
                 </div>
+
                 <button
                     type="button"
                     onClick={() => onRemoveItem(index)}
-                    className="btn btn-xs btn-error"
+                    className="btn btn-sm btn-ghost text-red-500"
                 >
-                    <Trash2 size={12} />
+                    <Trash2 size={16} />
                 </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="form-control">
-                    <label className="label">
-                        <span className="label-text">Unit</span>
+                    <label className="label py-1">
+                        <span className="label-text text-xs font-semibold">
+                            Unit
+                        </span>
                     </label>
                     <select
                         className="select select-bordered select-sm"
                         value={selectedUnit}
-                        onChange={(e) => onUnitChange(item.uniqueKey, e.target.value)}
+                        onChange={(e) =>
+                            onUnitChange(item.uniqueKey, e.target.value)
+                        }
+                        disabled={item.is_tracking_enabled}
                     >
                         {availableUnitsList.map((unit) => (
                             <option key={unit} value={unit}>
@@ -2133,50 +2370,124 @@ const SelectedItemCard = ({
                 </div>
 
                 <div className="form-control">
-                    <label className="label">
-                        <span className="label-text">Quantity</span>
+                    <label className="label py-1">
+                        <span className="label-text text-xs font-semibold">
+                            Quantity
+                        </span>
                     </label>
                     <input
                         type="number"
                         className="input input-bordered input-sm"
                         value={unitQuantity}
-                        onChange={(e) => onUpdateItem(index, "unit_quantity", e.target.value)}
+                        onChange={(e) =>
+                            onUpdateItem(index, "unit_quantity", e.target.value)
+                        }
+                        min="1"
+                        step={item.is_tracking_enabled ? "1" : "0.001"}
                     />
                 </div>
 
                 <div className="form-control">
-                    <label className="label">
-                        <span className="label-text">
-                            Price {isManuallyEdited && "(Manual)"}
+                    <label className="label py-1">
+                        <span className="label-text text-xs font-semibold">
+                            Unit Price
                         </span>
                     </label>
                     <input
                         type="number"
-                        step="0.01"
                         className="input input-bordered input-sm"
                         value={item.unit_price}
-                        onChange={(e) => onUpdateItem(index, "unit_price", e.target.value)}
+                        onChange={(e) =>
+                            onUpdateItem(index, "unit_price", e.target.value)
+                        }
+                        min="0"
                     />
                 </div>
 
                 <div className="form-control">
-                    <label className="label">
-                        <span className="label-text">Total</span>
+                    <label className="label py-1">
+                        <span className="label-text text-xs font-semibold">
+                            Total
+                        </span>
                     </label>
-                    <input
-                        type="text"
-                        className="input input-bordered input-sm bg-gray-100"
-                        value={formatCurrency(item.total_price)}
-                        readOnly
-                    />
+                    <div className="input input-bordered input-sm flex items-center bg-gray-50 font-semibold">
+                        ৳{formatCurrency(item.total_price || 0)}
+                    </div>
                 </div>
             </div>
 
+            {item.is_tracking_enabled && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-semibold text-amber-800">
+                            Select {item.tracking_type === "imei" ? "IMEI" : "Serial"}
+                        </h4>
+                        <span className="text-xs text-amber-700">
+                            Required: {Number(item.unit_quantity || item.quantity || 0)}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {Array.from({
+                            length: Number(item.unit_quantity || item.quantity || 0),
+                        }).map((_, slotIndex) => (
+                            <div key={`${item.uniqueKey}-identifier-${slotIndex}`}>
+                                <label className="label py-1">
+                                    <span className="label-text text-xs font-medium">
+                                        {item.tracking_type === "imei" ? "IMEI" : "Serial"} #{slotIndex + 1}
+                                    </span>
+                                </label>
+
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={selectedForItem[slotIndex] || ""}
+                                    onChange={(e) =>
+                                        onUpdateSelectedIdentifier(
+                                            item.uniqueKey,
+                                            slotIndex,
+                                            e.target.value
+                                        )
+                                    }
+                                >
+                                    <option value="">
+                                        Select {item.tracking_type === "imei" ? "IMEI" : "Serial"}
+                                    </option>
+
+                                    {(item.available_identifiers || []).map((identifier) => {
+                                        const alreadySelected = selectedForItem.some(
+                                            (value, idx) =>
+                                                idx !== slotIndex &&
+                                                String(value) === String(identifier.id)
+                                        );
+
+                                        return (
+                                            <option
+                                                key={identifier.id}
+                                                value={identifier.id}
+                                                disabled={alreadySelected}
+                                            >
+                                                {identifier.identifier_value}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {item.product_unit_type && item.product_unit_type !== "piece" && (
-                <div className="mt-2 text-xs text-gray-600 bg-blue-50 p-2 rounded">
-                    <span className="font-medium">Stock:</span> {
-                        convertFromBase(item.stockBaseQuantity, selectedUnit, item.product_unit_type).toFixed(3)
-                    } {selectedUnit.toUpperCase()} available
+                <div className="mt-3 text-xs text-gray-500">
+                    <strong>Base Stock:</strong>{" "}
+                    {item.stockDetails?.base_quantity || item.stockBaseQuantity}{" "}
+                    base unit
+                </div>
+            )}
+
+            {isManuallyEdited && (
+                <div className="mt-2 text-xs text-orange-600 font-medium">
+                    Price manually updated
                 </div>
             )}
         </div>

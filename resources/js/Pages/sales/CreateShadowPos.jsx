@@ -438,7 +438,7 @@ export default function AddSale({ customers, productstocks }) {
                                                 <input
                                                     type="number"
                                                     min="0"
-                                                    step="0.01"
+                                                    
                                                     className="input input-bordered input-sm bg-gray-100"
                                                     value={item.shadow_sell_price}
                                                     onChange={(e) => updateItem(index, 'shadow_sell_price', e.target.value)}
@@ -473,7 +473,7 @@ export default function AddSale({ customers, productstocks }) {
                                                 type="number"
                                                 min="0"
                                                 max="100"
-                                                step="0.01"
+                                                
                                                 className="input input-bordered input-sm w-20"
                                                 value={vatRate}
                                                 onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)}

@@ -38,7 +38,7 @@ import autoTable from 'jspdf-autotable';
 import { toast } from "react-toastify";
 import axios from 'axios';
 
-export default function Product({ product, filters, brands, categories }) {
+export default function Product({ product, filters, brands, categories, summary }) {
     const { auth } = usePage().props;
     const { t, locale } = useTranslation();
     const [showFilters, setShowFilters] = useState(false);
@@ -46,6 +46,9 @@ export default function Product({ product, filters, brands, categories }) {
 
     const [expandedProducts, setExpandedProducts] = useState({});
     const [showBulkBarcodeModal, setShowBulkBarcodeModal] = useState(false);
+
+    const [showIdentifierModal, setShowIdentifierModal] = useState(false);
+    const [selectedIdentifierProduct, setSelectedIdentifierProduct] = useState(null);
 
     // store selected barcode rows (barcode is unique key)
     const [selectedBarcodeMap, setSelectedBarcodeMap] = useState(() => new Map());
@@ -116,13 +119,59 @@ export default function Product({ product, filters, brands, categories }) {
         setData(field, value);
     };
 
+    const getAllIdentifiersForProduct = (productItem) => {
+        const rows = [];
+
+        (productItem?.variants || []).forEach((variant) => {
+            if (variant?.stock?.identifiers?.length) {
+                variant.stock.identifiers.forEach((identifier) => {
+                    rows.push({
+                        id: identifier.id,
+                        identifier_value: identifier.identifier_value,
+                        identifier_type: identifier.identifier_type,
+                        status: identifier.status,
+                        batch_no: variant.stock?.batch_no || "N/A",
+                        barcode: variant.stock?.barcode || "N/A",
+                        variant_name: formatVariantDisplay(variant),
+                        stock_id: variant.stock?.id,
+                    });
+                });
+            }
+
+            if (Array.isArray(variant?.stocks) && variant.stocks.length > 0) {
+                variant.stocks.forEach((stock) => {
+                    (stock.identifiers || []).forEach((identifier) => {
+                        rows.push({
+                            id: identifier.id,
+                            identifier_value: identifier.identifier_value,
+                            identifier_type: identifier.identifier_type,
+                            status: identifier.status,
+                            batch_no: stock?.batch_no || "N/A",
+                            barcode: stock?.barcode || "N/A",
+                            variant_name: formatVariantDisplay(variant),
+                            stock_id: stock?.id,
+                        });
+                    });
+                });
+            }
+        });
+
+        const seen = new Set();
+        return rows.filter((row) => {
+            const key = `${row.id}-${row.identifier_value}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+
     const clearFilters = () => {
-        setData({ 
-            search: "", 
-            brand_id: "", 
-            category_id: "", 
-            start_date: "", 
-            end_date: "" 
+        setData({
+            search: "",
+            brand_id: "",
+            category_id: "",
+            start_date: "",
+            end_date: ""
         });
 
         router.get(route("product.list"), {}, {
@@ -139,11 +188,11 @@ export default function Product({ product, filters, brands, categories }) {
 
     // Check if any filter is active
     const hasActiveFilters = () => {
-        return localFilters.search || 
-               localFilters.brand_id || 
-               localFilters.category_id || 
-               localFilters.start_date || 
-               localFilters.end_date;
+        return localFilters.search ||
+            localFilters.brand_id ||
+            localFilters.category_id ||
+            localFilters.start_date ||
+            localFilters.end_date;
     };
 
     const handleKeyPress = (e) => {
@@ -233,9 +282,9 @@ export default function Product({ product, filters, brands, categories }) {
                     end_date: localFilters.end_date
                 }
             });
-            
+
             console.log('Export response:', response.data);
-            
+
             if (response.data && response.data.products) {
                 return response.data.products;
             } else if (response.data && Array.isArray(response.data)) {
@@ -245,7 +294,7 @@ export default function Product({ product, filters, brands, categories }) {
             }
         } catch (error) {
             console.error('Error fetching all products:', error);
-            
+
             if (error.response) {
                 toast.error(`Server error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`);
             } else if (error.request) {
@@ -253,7 +302,7 @@ export default function Product({ product, filters, brands, categories }) {
             } else {
                 toast.error(`Request error: ${error.message}`);
             }
-            
+
             throw error;
         }
     };
@@ -267,7 +316,7 @@ export default function Product({ product, filters, brands, categories }) {
             if (productItem?.variants && productItem.variants.length > 0) {
                 productItem.variants.forEach(variant => {
                     const barcodes = getVariantBarcodes(variant, productItem);
-                    
+
                     exportData.push({
                         'Product Name': productItem.name,
                         'Product Code': productItem.product_no || 'N/A',
@@ -315,10 +364,10 @@ export default function Product({ product, filters, brands, categories }) {
         productsData.forEach(productItem => {
             const productStock = calculateTotalStock(productItem);
             totalStock += productStock;
-            
+
             const variantCount = productItem?.variants?.length || 0;
             totalVariants += variantCount;
-            
+
             if (variantCount > 0) {
                 productsWithVariants++;
             }
@@ -336,10 +385,10 @@ export default function Product({ product, filters, brands, categories }) {
     const downloadCSV = async () => {
         try {
             setIsDownloading(true);
-            
+
             // Fetch all products using export endpoint
             const allProducts = await fetchAllProductsForExport();
-            
+
             if (allProducts.length === 0) {
                 toast.warning(t('product.no_data_export', 'No data to export'));
                 return;
@@ -405,10 +454,10 @@ export default function Product({ product, filters, brands, categories }) {
     const downloadExcel = async () => {
         try {
             setIsDownloading(true);
-            
+
             // Fetch all products using export endpoint
             const allProducts = await fetchAllProductsForExport();
-            
+
             if (allProducts.length === 0) {
                 toast.warning(t('product.no_data_export', 'No data to export'));
                 return;
@@ -458,10 +507,10 @@ export default function Product({ product, filters, brands, categories }) {
     const downloadPDF = async () => {
         try {
             setIsDownloading(true);
-            
+
             // Fetch all products using export endpoint
             const allProducts = await fetchAllProductsForExport();
-            
+
             if (allProducts.length === 0) {
                 toast.warning(t('product.no_data_export', 'No data to export'));
                 return;
@@ -1583,9 +1632,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                     <Package size={16} className="text-blue-600" />
                                                     <div>
                                                         <div
-                                                            className={`font-bold text-lg ${
-                                                                totalStock === 0 ? "text-error" : totalStock < 10 ? "text-warning" : "text-success"
-                                                            }`}
+                                                            className={`font-bold text-lg ${totalStock === 0 ? "text-error" : totalStock < 10 ? "text-warning" : "text-success"
+                                                                }`}
                                                         >
                                                             {totalStock}
                                                         </div>
@@ -1617,9 +1665,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                             return (
                                                                 <div
                                                                     key={variant.id}
-                                                                    className={`border p-2 rounded text-xs ${
-                                                                        hasAttributes ? "border-primary bg-[#1e4d2b] text-white" : "border-dashed border-neutral"
-                                                                    }`}
+                                                                    className={`border p-2 rounded text-xs ${hasAttributes ? "border-primary bg-[#1e4d2b] text-white" : "border-dashed border-neutral"
+                                                                        }`}
                                                                 >
                                                                     <div className="flex justify-between items-start">
                                                                         <div className="flex-1">
@@ -1698,9 +1745,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                                                 return (
                                                                                     <div
                                                                                         key={`${variant.id}-${b.barcode}-${idx}`}
-                                                                                        className={`flex items-center justify-between p-2 rounded text-xs border ${
-                                                                                            isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
-                                                                                        }`}
+                                                                                        className={`flex items-center justify-between p-2 rounded text-xs border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
+                                                                                            }`}
                                                                                     >
                                                                                         <div className="flex items-center gap-2 min-w-0">
                                                                                             <button
@@ -1775,6 +1821,18 @@ export default function Product({ product, filters, brands, categories }) {
                                                         >
                                                             <Trash2 size={10} />
                                                         </Link>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedIdentifierProduct(productItem);
+                                                                setShowIdentifierModal(true);
+                                                            }}
+                                                            className="btn btn-xs btn-info text-white"
+                                                            title="Show IMEI / Serial"
+                                                        >
+                                                            <Barcode size={10} />
+                                                        </button>
                                                     </div>
 
                                                     {/* Mobile dropdown */}
@@ -1856,9 +1914,8 @@ export default function Product({ product, filters, brands, categories }) {
                                                                                     return (
                                                                                         <div
                                                                                             key={`${variant.id}-${barcodeData.barcode}-${index}`}
-                                                                                            className={`flex items-center justify-between p-2 rounded text-xs border ${
-                                                                                                isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
-                                                                                            }`}
+                                                                                            className={`flex items-center justify-between p-2 rounded text-xs border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-transparent"
+                                                                                                }`}
                                                                                         >
                                                                                             <div className="flex items-center gap-2">
                                                                                                 <button
@@ -1912,7 +1969,111 @@ export default function Product({ product, filters, brands, categories }) {
                 )}
             </div>
 
+            {showIdentifierModal && selectedIdentifierProduct && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100">
+                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                    <Barcode size={18} className="text-primary" />
+                                    IMEI / Serial Numbers
+                                </h3>
+                                <p className="text-xs text-gray-500 font-medium mt-1">
+                                    {selectedIdentifierProduct.name} ({selectedIdentifierProduct.product_no})
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    setShowIdentifierModal(false);
+                                    setSelectedIdentifierProduct(null);
+                                }}
+                                className="btn btn-ghost btn-circle btn-sm"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto max-h-[70vh]">
+                            {getAllIdentifiersForProduct(selectedIdentifierProduct).length > 0 ? (
+                                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                                    <table className="table w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Type</th>
+                                                <th>IMEI / Serial</th>
+                                                <th>Variant</th>
+                                                <th>Batch</th>
+                                                <th>Barcode</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {getAllIdentifiersForProduct(selectedIdentifierProduct).map((row, index) => (
+                                                <tr key={`${row.id}-${index}`} className="hover:bg-gray-50">
+                                                    <td>{index + 1}</td>
+                                                    <td>
+                                                        <span className="badge badge-outline">
+                                                            {row.identifier_type}
+                                                        </span>
+                                                    </td>
+                                                    <td className="font-mono text-sm font-bold">
+                                                        {row.identifier_value}
+                                                    </td>
+                                                    <td>{row.variant_name}</td>
+                                                    <td>{row.batch_no}</td>
+                                                    <td className="font-mono text-xs">{row.barcode}</td>
+                                                    <td>
+                                                        <span
+                                                            className={`badge ${row.status === "sold"
+                                                                ? "badge-error"
+                                                                : row.status === "available"
+                                                                    ? "badge-success"
+                                                                    : "badge-warning"
+                                                                }`}
+                                                        >
+                                                            {row.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="py-12 text-center">
+                                    <Barcode size={32} className="mx-auto text-gray-300 mb-3" />
+                                    <p className="text-gray-500 font-medium">No IMEI / Serial found</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
             <Pagination data={product} />
+
+            {hasActiveFilters() && summary && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="text-xs text-gray-500 font-medium">
+                            {t('product.filtered_data_count', 'Filtered Data Count')}
+                        </div>
+                        <div className="text-xl font-bold text-[#1e4d2b] mt-1">
+                            {summary.count || 0}
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="text-xs text-gray-500 font-medium">
+                            {t('product.sale_price_total', 'Sale Price Total')}
+                        </div>
+                        <div className="text-xl font-bold text-[#1e4d2b] mt-1">
+                            {formatCurrency(summary.sale_price_total || 0)}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

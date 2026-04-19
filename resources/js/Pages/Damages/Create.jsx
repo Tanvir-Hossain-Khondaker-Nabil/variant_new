@@ -203,7 +203,7 @@ export default function CreateDamage({ data, type, accounts = [] }) {
                                 </label>
                                 <input
                                     type="number"
-                                    step="0.01"
+                                    
                                     min="0"
                                     className="input input-bordered rounded-xl"
                                     value={form.data.loss_amount}

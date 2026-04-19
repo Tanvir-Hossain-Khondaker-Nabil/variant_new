@@ -640,7 +640,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                         <input
                                             type="number"
                                             min="0"
-                                            step="0.01"
+                                            
                                             className="input input-bordered input-sm w-full border-warning"
                                             value={shadowPaidAmount}
                                             onChange={(e) => setShadowPaidAmount(parseFloat(e.target.value) || 0)}
@@ -723,7 +723,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                                 type="number"
                                                 min="0"
                                                 max={totalAmount}
-                                                step="0.01"
+                                                
                                                 className={`input input-bordered input-sm w-full ${manualPaymentOverride ? 'border-info' : ''}`}
                                                 value={paidAmount}
                                                 onChange={handleManualPaymentInput}
@@ -807,7 +807,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                             <input
                                                 type="number"
                                                 min="0"
-                                                step="0.01"
+                                                
                                                 className="input input-bordered input-sm w-full border-info"
                                                 value={shadowPaidAmount}
                                                 onChange={(e) => setShadowPaidAmount(parseFloat(e.target.value) || 0)}
@@ -988,7 +988,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                                                 <input
                                                                     type="number"
                                                                     min="0.01"
-                                                                    step="0.01"
+                                                                    
                                                                     className="input input-bordered input-sm w-full"
                                                                     value={item.unit_price}
                                                                     onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
@@ -1007,7 +1007,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                                             <input
                                                                 type="number"
                                                                 min="0.01"
-                                                                step="0.01"
+                                                                
                                                                 className={`input input-bordered input-sm w-full ${isShadowUser ? 'border-warning' : 'border-info'}`}
                                                                 value={item.shadow_unit_price}
                                                                 onChange={(e) => updateItem(index, 'shadow_unit_price', parseFloat(e.target.value) || 0)}
@@ -1041,7 +1041,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                                                 <input
                                                                     type="number"
                                                                     min="0.01"
-                                                                    step="0.01"
+                                                                    
                                                                     className="input input-bordered input-sm w-full"
                                                                     value={item.sale_price}
                                                                     onChange={(e) => updateItem(index, 'sale_price', parseFloat(e.target.value) || 0)}
@@ -1060,7 +1060,7 @@ export default function AddPurchase({ suppliers, warehouses, products, isShadowU
                                                             <input
                                                                 type="number"
                                                                 min="0.01"
-                                                                step="0.01"
+                                                                
                                                                 className={`input input-bordered input-sm w-full ${isShadowUser ? 'border-warning' : 'border-info'}`}
                                                                 value={item.shadow_sale_price}
                                                                 onChange={(e) => updateItem(index, 'shadow_sale_price', parseFloat(e.target.value) || 0)}

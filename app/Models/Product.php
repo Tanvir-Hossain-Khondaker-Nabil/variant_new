@@ -37,7 +37,9 @@ class Product extends Model
         'has_warranty',
         'warranty_duration',
         'warranty_duration_type',
-        'warranty_terms'
+        'warranty_terms',
+        'is_tracking_enabled',
+        'tracking_type',
     ];
 
     protected $casts = [
@@ -47,6 +49,7 @@ class Product extends Model
         'in_house_shadow_sale_price' => 'decimal:2',
         'in_house_initial_stock' => 'integer',
         'has_warranty' => 'boolean',
+        'is_tracking_enabled' => 'boolean',
     ];
 
     const Day = 'day';
@@ -54,6 +57,16 @@ class Product extends Model
     const Year = 'year';
 
     use BelongsToTenant;
+
+    public function stockIdentifiers()
+    {
+        return $this->hasMany(StockIdentifier::class);
+    }
+
+    public function isSerialTracked(): bool
+    {
+        return (bool) $this->is_tracking_enabled;
+    }
 
     public function stocks()
     {

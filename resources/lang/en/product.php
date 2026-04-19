@@ -71,7 +71,7 @@ return [
     'from_title' => 'Add New Product',
     'update_title' => 'Update Product',
     'from_subtitle' => 'Add or update product with variants',
-    
+
     // Form fields
     'from_product_name' => 'Product Name',
     'from_category' => 'Category',
@@ -87,7 +87,7 @@ return [
 
     // Brand field
     'pick_brand' => '--Pick a Brand--',
-    
+
     // Attributes section
     'product_attributes' => 'Product Attribute',
     'select_attributes' => 'Select Attributes',
@@ -96,7 +96,7 @@ return [
     'selected_attributes' => 'Selected Attributes',
     'apply_attributes' => 'Apply Attributes',
     'selected_count' => 'Selected',
-    
+
     // Variants section
     'product_variants' => 'Product Variants',
     'variant' => 'Variant',
@@ -106,12 +106,12 @@ return [
     'variant_pricing' => 'Variant Pricing',
     'add_variant' => 'Add Variant',
     'variant_count' => 'variant(s)',
-    
+
     // Buttons
     'save_product' => 'Save Product',
     'update_product' => 'Update Product',
     'saving' => 'Saving...',
-    
+
     // Validation messages
     'product_name_required' => 'Product name is required',
     'category_required' => 'Category is required',
@@ -123,18 +123,18 @@ return [
     'duplicate_variants' => 'Duplicate attribute combinations found',
     'invalid_variant_attributes' => 'Please check variant attributes',
     'at_least_one_variant' => 'Please add at least one variant',
-    
+
     // Success messages
     'product_added_success' => 'Product added successfully!',
     'product_updated_success' => 'Product updated successfully!',
-    
+
     // Product Type
     'product_type' => 'Product Type',
     'regular_product' => 'Regular Product',
     'in_house_product' => 'In-House Production',
     'regular_desc' => 'Purchase from supplier, needs stock management through purchase orders',
     'in_house_desc' => 'Internally produced, auto-stock management in In-House warehouse',
-    
+
     // In-House Product Settings
     'in_house_settings' => 'In-House Production Settings',
     'production_cost' => 'Production Cost',
@@ -144,11 +144,11 @@ return [
     'initial_stock' => 'Initial Stock Quantity',
     'in_house_note' => 'Note: This product will be automatically added to "In-House Production" warehouse with the specified initial stock quantity. No purchase order needed. Stock will be managed internally.',
     'shadow_cost' => 'Shadow Cost',
-    
+
     // Summary
     'summary' => 'Summary',
     'in_house_product_short' => 'In-House Product',
-    
+
     // Additional validation
     'production_cost_required' => 'Production cost is required',
     'shadow_cost_required' => 'Shadow production cost is required',
@@ -189,6 +189,7 @@ return [
     // Variant Unit Info
     'variant_unit_note' => 'Note for Variants:',
     'variant_unit_description' => 'All variants will use the same unit settings. Each variant\'s stock will be tracked in',
-    
-  
+    'filtered_data_count' => 'Filtered Data Count',
+    'sale_price_total' => 'Sale Price Total',
+
 ];

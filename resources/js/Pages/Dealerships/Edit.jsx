@@ -401,7 +401,7 @@ export default function Edit({ dealership, companies, users }) {
                                     onChange={(e) => setData("advance_amount", e.target.value)}
                                     className="w-full px-4 py-3  rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-gray-300"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                     readOnly
                                 />
                                 {errors.advance_amount && (
@@ -420,7 +420,7 @@ export default function Edit({ dealership, companies, users }) {
                                     onChange={(e) => setData("due_amount", e.target.value)}
                                     className="w-full px-4 py-3  rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-200 bg-gray-300"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                     readOnly
                                 />
                             </div>
@@ -436,7 +436,7 @@ export default function Edit({ dealership, companies, users }) {
                                     onChange={(e) => setData("credit_limit", e.target.value)}
                                     className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                 />
                             </div>
 

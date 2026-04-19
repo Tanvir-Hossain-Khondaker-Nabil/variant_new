@@ -79,7 +79,7 @@ export default function FestivalBonusModal({ onClose }) {
                             <label className="block text-sm font-medium text-gray-700">Bonus Percentage (%)</label>
                             <input
                                 type="number"
-                                step="0.01"
+                                
                                 min="0"
                                 max="100"
                                 value={data.percentage}

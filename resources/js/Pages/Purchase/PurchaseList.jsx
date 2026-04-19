@@ -46,6 +46,9 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
   const [showFilters, setShowFilters] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const [showIdentifierModal, setShowIdentifierModal] = useState(false);
+  const [selectedIdentifierPurchase, setSelectedIdentifierPurchase] = useState(null);
+
   const safePurchases = purchases?.data || [];
 
   const [localFilters, setLocalFilters] = useState({
@@ -244,6 +247,10 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
     if (confirm("Permanently wipe record and reverse stock?")) {
       router.delete(route("purchase.destroy", id));
     }
+  };
+
+  const getPurchaseIdentifiers = (purchase) => {
+    return Array.isArray(purchase?.identifiers) ? purchase.identifiers : [];
   };
 
   // ===================== Amounts =====================
@@ -472,6 +479,9 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
           item?.barcode ||
           stock?.batch_no ||
           item?.batch_no ||
+          item?.product_no ||
+          product?.product_no ||
+          item?.variant?.sku ||
           product?.sku ||
           "";
 
@@ -1317,7 +1327,7 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">৳</span>
                       <input
                         type="number"
-                        step="0.01"
+
                         min="0.01"
                         max={getDisplayAmounts(selectedPurchase).due}
                         value={paymentForm.payment_amount}
@@ -2108,10 +2118,10 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                           </span>
                           <span
                             className={`badge border-none font-black text-[9px] uppercase py-1.5 px-2 ${purchase.status === "completed"
-                                ? "bg-blue-100 text-blue-700"
-                                : purchase.status === "pending"
-                                  ? "bg-gray-100 text-gray-600"
-                                  : "bg-red-100 text-red-400"
+                              ? "bg-blue-100 text-blue-700"
+                              : purchase.status === "pending"
+                                ? "bg-gray-100 text-gray-600"
+                                : "bg-red-100 text-red-400"
                               }`}
                           >
                             {purchase.status}
@@ -2165,10 +2175,22 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
                         </Link>
 
                         {/* {auth?.role === "admin" && ( */}
-                          <button onClick={() => handleDelete(purchase.id)} className="btn btn-ghost btn-square btn-xs text-red-400 hover:bg-red-600 hover:text-white" title="Delete Purchase">
-                            <Trash2 size={16} />
-                          </button>
+                        <button onClick={() => handleDelete(purchase.id)} className="btn btn-ghost btn-square btn-xs text-red-400 hover:bg-red-600 hover:text-white" title="Delete Purchase">
+                          <Trash2 size={16} />
+                        </button>
                         {/* )} */}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedIdentifierPurchase(purchase);
+                            setShowIdentifierModal(true);
+                          }}
+                          className="btn btn-xs btn-info text-white"
+                          title="Show IMEI / Serial"
+                        >
+                          <BarcodeIcon size={12} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2185,6 +2207,94 @@ export default function PurchaseList({ purchases, filters, isShadowUser, account
       </div>
 
       <Pagination data={purchases} />
+      {showIdentifierModal && selectedIdentifierPurchase && (
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl mt-16 border border-gray-100">
+            <div className="p-6">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <BarcodeIcon size={20} className="text-primary" />
+                    IMEI / Serial List
+                  </h3>
+                  <p className="text-xs text-gray-500 font-bold">
+                    Purchase: <span className="text-gray-900">{selectedIdentifierPurchase.purchase_no}</span>
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowIdentifierModal(false);
+                    setSelectedIdentifierPurchase(null);
+                  }}
+                  className="btn btn-ghost btn-circle btn-sm"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {getPurchaseIdentifiers(selectedIdentifierPurchase).length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="table w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th>#</th>
+                        <th>Product</th>
+                        <th>Variant</th>
+                        <th>Type</th>
+                        <th>IMEI / Serial</th>
+                        <th>Batch</th>
+                        <th>Barcode</th>
+                        <th>Status</th>
+                        <th>Sold At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getPurchaseIdentifiers(selectedIdentifierPurchase).map((row, index) => (
+                        <tr key={`${row.id}-${index}`} className="hover:bg-gray-50">
+                          <td>{index + 1}</td>
+                          <td>{row.product_name || "N/A"}</td>
+                          <td>{row.variant_name || "N/A"}</td>
+                          <td>
+                            <span className="badge badge-outline">
+                              {row.identifier_type}
+                            </span>
+                          </td>
+                          <td className="font-mono text-sm font-bold">
+                            {row.identifier_value}
+                          </td>
+                          <td>{row.batch_no || "N/A"}</td>
+                          <td className="font-mono text-xs">
+                            {row.barcode || "N/A"}
+                          </td>
+                          <td>
+                            <span
+                              className={`badge ${row.status === "sold"
+                                ? "badge-error"
+                                : row.status === "available"
+                                  ? "badge-success"
+                                  : "badge-warning"
+                                }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                          <td>{row.sold_at ? formatDate(row.sold_at) : "N/A"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-12 text-center">
+                  <BarcodeIcon size={32} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">No IMEI / Serial found</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

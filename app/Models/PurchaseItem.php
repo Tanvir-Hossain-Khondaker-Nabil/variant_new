@@ -49,7 +49,10 @@ class PurchaseItem extends Model
 
     use BelongsToTenant;
 
-    //damage relation ship
+    public function stockIdentifiers()
+    {
+        return $this->hasMany(StockIdentifier::class, 'purchase_item_id');
+    }
 
     public function damage()
     {

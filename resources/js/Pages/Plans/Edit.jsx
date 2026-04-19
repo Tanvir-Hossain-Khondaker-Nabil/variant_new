@@ -150,7 +150,7 @@ export default function Edit({ plans, modules }) {
                                             onChange={(e) => setData("price", e.target.value)}
                                             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-4 focus:ring-emerald-200/60 focus:border-emerald-700 transition-all bg-white"
                                             placeholder={t('plan.enter_price', '0.00')}
-                                            step="0.01"
+                                            
                                             min="0"
                                         />
                                         {errors.price && <p className="text-red-600 text-sm mt-2">⚠️ {errors.price}</p>}

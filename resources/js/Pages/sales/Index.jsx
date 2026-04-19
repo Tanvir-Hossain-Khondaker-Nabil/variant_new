@@ -974,7 +974,7 @@ export default function SalesIndex({ sales, filters, isShadowUser, accounts }) {
                                                 onChange={handlePaymentInputChange}
                                                 min="0"
                                                 max={selectedSale.due_amount}
-                                                step="0.01"
+                                                
                                                 className="input input-bordered"
                                                 required
                                             />
@@ -998,7 +998,7 @@ export default function SalesIndex({ sales, filters, isShadowUser, accounts }) {
                                                 onChange={handlePaymentInputChange}
                                                 min="0"
                                                 max={selectedSale.shadow_due_amount}
-                                                step="0.01"
+                                                
                                                 className="input input-bordered"
                                             />
                                             {paymentErrors.shadow_paid_amount && (

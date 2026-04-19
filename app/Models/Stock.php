@@ -45,6 +45,11 @@ class Stock extends Model
 
     use BelongsToTenant;
 
+    public function identifiers()
+    {
+        return $this->hasMany(StockIdentifier::class);
+    }
+
     public function purchaseItems()
     {
         return $this->hasMany(PurchaseItem::class);
@@ -62,7 +67,7 @@ class Stock extends Model
 
     public function product()
     {
-        return $this->belongsTo(Product::class)->with(['brand','variants']);
+        return $this->belongsTo(Product::class)->with(['brand', 'variants']);
     }
 
     public function variant()

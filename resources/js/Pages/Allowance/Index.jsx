@@ -218,7 +218,7 @@ export default function Allowance({ allowanceSettings, employees, locale }) {
                                         </div>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            
                                             value={data.is_percentage ? data.percentage : data.fixed_amount}
                                             onChange={e => setData(data.is_percentage ? 'percentage' : 'fixed_amount', e.target.value)}
                                             className="input input-bordered w-full pl-12 rounded-xl font-mono font-black border-gray-300 focus:border-red-600"

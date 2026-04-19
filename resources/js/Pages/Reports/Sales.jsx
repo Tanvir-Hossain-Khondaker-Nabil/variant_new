@@ -1026,7 +1026,7 @@ export default function Sales({ sales, filters, isShadowUser, accounts }) {
                                                 }
                                                 min="0.01"
                                                 max={selectedSale.due_amount}
-                                                step="0.01"
+                                                
                                                 className="input input-bordered"
                                                 required
                                             />

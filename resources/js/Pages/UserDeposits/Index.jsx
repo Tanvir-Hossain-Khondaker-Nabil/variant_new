@@ -736,7 +736,7 @@ export default function UserDeposits({ deposits, filters }) {
                       <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">৳</span>
                       <input
                         type="number"
-                        step="0.01"
+                        
                         min="0.01"
                         value={depositForm.data.amount}
                         onChange={(e) => depositForm.setData("amount", e.target.value)}

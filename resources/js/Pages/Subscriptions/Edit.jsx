@@ -283,7 +283,7 @@ export default function Edit({ subscription, plans }) {
                                     onChange={(e) => setData("amount", e.target.value)}
                                     className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                     min="0"
                                     readOnly
                                 />

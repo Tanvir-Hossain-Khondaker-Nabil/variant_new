@@ -2,28 +2,29 @@
 
 namespace App\Http\Controllers;
 
-use Carbon\Carbon;
-use App\Models\Sale;
-use Inertia\Inertia;
-use App\Models\Stock;
 use App\Models\Account;
+use App\Models\BusinessProfile;
+use App\Models\Customer;
+use App\Models\Installment;
 use App\Models\Payment;
 use App\Models\Product;
-use App\Models\Variant;
-use App\Models\Customer;
 use App\Models\Purchase;
-use App\Models\SaleItem;
-use App\Models\Supplier;
-use App\Models\Warranty;
-use App\Models\Installment;
-use Illuminate\Support\Str;
 use App\Models\PurchaseItem;
-use Illuminate\Http\Request;
+use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Models\Stock;
+use App\Models\StockIdentifier;
 use App\Models\StockMovement;
-use App\Models\BusinessProfile;
+use App\Models\Supplier;
+use App\Models\Variant;
+use App\Models\Warranty;
 use App\Services\ReceiptService;
-use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
 
 class SalesController extends Controller
 {
@@ -220,22 +221,29 @@ class SalesController extends Controller
         $isShadowUser = $user->type === 'shadow';
 
         $customers = Customer::orWhere('phone', '!=', '100100100')
-            ->active()->get();
+            ->active()
+            ->get();
 
-        $stock = Stock::with(['warehouse', 'product.category', 'product.brand', 'variant'])
+        $stock = Stock::with([
+            'warehouse',
+            'product.category',
+            'product.brand',
+            'variant',
+            'identifiers', // <-- add this
+        ])
             ->where('quantity', '>', 0)
             ->orderBy('created_at', 'asc')
             ->get();
 
         $accounts = Account::where('is_active', true)->get();
-        $supplier = Supplier::where('type', 'local')
-            ->get();
+
+        $supplier = Supplier::where('type', 'local')->get();
 
         $products = Product::with('brand', 'variants')
             ->where('type', 'local')
             ->get();
 
-        $isShadowUser ? $render = 'sales/CreateShadow' : $render = 'sales/Create';
+        $render = $isShadowUser ? 'sales/CreateShadow' : 'sales/Create';
 
         return Inertia::render($render, [
             'customers' => $customers,
@@ -258,22 +266,29 @@ class SalesController extends Controller
         $isShadowUser = $user->type === 'shadow';
 
         $customers = Customer::orWhere('phone', '!=', '100100100')
-            ->active()->get();
+            ->active()
+            ->get();
 
-        $stock = Stock::with(['warehouse', 'product.category', 'product.brand', 'variant'])
+        $stock = Stock::with([
+            'warehouse',
+            'product.category',
+            'product.brand',
+            'variant',
+            'identifiers', // add this
+        ])
             ->where('quantity', '>', 0)
             ->orderBy('created_at', 'asc')
             ->get();
 
         $accounts = Account::where('is_active', true)->get();
-        $supplier = Supplier::where('type', 'local')
-            ->get();
+
+        $supplier = Supplier::where('type', 'local')->get();
 
         $products = Product::with('brand', 'variants')
             ->where('type', 'local')
             ->get();
 
-        $isShadowUser ? $render = 'sales/CreateShadowPos' : $render = 'sales/CreatePos';
+        $render = $isShadowUser ? 'sales/CreateShadowPos' : 'sales/CreatePos';
 
         return Inertia::render($render, [
             'customers' => $customers,
@@ -348,13 +363,12 @@ class SalesController extends Controller
 
 
 
-    
+
     /**
      * Shared create logic for both Inventory + POS
      */
     private function storeManage(Request $request, string $type): Sale
     {
-
         // -------------------------
         //  Rules (fixed order)
         // -------------------------
@@ -478,7 +492,7 @@ class SalesController extends Controller
                     ->first();
 
                 if ($customer) {
-                    $customerId =   $customer->id;
+                    $customerId = $customer->id;
                 } else {
                     $customer = Customer::create([
                         'customer_name' => 'Walk-In-Customer',
@@ -527,7 +541,8 @@ class SalesController extends Controller
             // -------------------------
             if ($adjust_amount === true && $customerId) {
                 $customer = Customer::find($customerId);
-                if (!$customer) throw new \Exception('Customer not found for advance adjustment.');
+                if (!$customer)
+                    throw new \Exception('Customer not found for advance adjustment.');
 
                 if ($paid_amount > $customer->advance_amount) {
                     throw new \Exception('Adjustment amount cannot be greater than available advance amount.');
@@ -616,8 +631,40 @@ class SalesController extends Controller
                         throw new \Exception('Product or Variant not found for inventory item.');
                     }
 
+                    $identifierIds = array_values(array_filter($item['identifier_ids'] ?? []));
+
                     $unit = $item['unit'] ?? ($product->min_sale_unit ?? $product->default_unit ?? 'piece');
                     $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 1);
+
+                    $isTrackedProduct = !empty($product->is_tracking_enabled)
+                        && in_array($product->tracking_type, ['imei', 'serial']);
+
+                    if ($isTrackedProduct) {
+                        if ($unit !== 'piece') {
+                            throw new \Exception("Tracked product must be sold in piece unit.");
+                        }
+
+                        if ((int) $unitQuantity !== count($identifierIds)) {
+                            throw new \Exception("Identifier count must match quantity for {$product->name}.");
+                        }
+
+                        if (count($identifierIds) !== count(array_unique($identifierIds))) {
+                            throw new \Exception("Duplicate identifier selected for {$product->name}.");
+                        }
+
+                        $validIdentifiers = StockIdentifier::query()
+                            ->whereIn('id', $identifierIds)
+                            ->where('stock_id', $item['stock_id'] ?? null)
+                            ->where('product_id', $product->id)
+                            ->where('variant_id', $variant->id)
+                            ->where('status', 'available')
+                            ->lockForUpdate()
+                            ->get();
+
+                        if ($validIdentifiers->count() !== count($identifierIds)) {
+                            throw new \Exception("Some selected IMEI/Serial are invalid or unavailable for {$product->name}.");
+                        }
+                    }
 
                     // Get sale price (already converted to selected unit in frontend)
                     $unitPrice = (float) ($item['unit_price'] ?? 0);
@@ -672,12 +719,24 @@ class SalesController extends Controller
                         'item_type' => 'real',
                     ]);
 
+                    // ✅ Mark selected identifiers as sold
+                    if ($isTrackedProduct && !empty($identifierIds)) {
+                        StockIdentifier::query()
+                            ->whereIn('id', $identifierIds)
+                            ->update([
+                                'status' => 'sold',
+                                'sale_id' => $sale->id,
+                                'sale_item_id' => $saleItem->id,
+                                'sold_at' => now(),
+                            ]);
+                    }
+
                     // Warranty (only if your Product has these fields)
                     if (!empty($product->has_warranty)) {
                         Warranty::create([
                             'sale_item_id' => $saleItem->id,
                             'start_date' => now(),
-                            'end_date' => now()->addDays((int) ($product->warranty_duration ?? 0)), // safe default
+                            'end_date' => now()->addDays((int) ($product->warranty_duration ?? 0)),
                             'terms' => $product->warranty_terms ?? null,
                         ]);
                     }
@@ -1067,8 +1126,28 @@ class SalesController extends Controller
             'items.product.brand',
             'items.variant',
             'items.warehouse',
-            'creator'
+            'items.stock.identifiers',
+            'creator',
         ])->findOrFail($sale->id);
+
+        $sale->items->transform(function ($item) {
+            $item->identifiers = collect();
+
+            if ($item->stock_id) {
+                $item->identifiers = \App\Models\StockIdentifier::where('stock_id', $item->stock_id)
+                    ->where('sale_item_id', $item->id)
+                    ->where('status', 'sold')
+                    ->get([
+                        'id',
+                        'identifier_type',
+                        'identifier_value',
+                        'status',
+                        'sold_at',
+                    ]);
+            }
+
+            return $item;
+        });
 
         if ($isShadowUser) {
             $sale = $this->transformToShadowData($sale);

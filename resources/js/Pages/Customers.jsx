@@ -1014,7 +1014,7 @@ export default function Customers({ customers, filters, accounts }) {
                                             <input
                                                 type="number"
                                                 name="paid_amount"
-                                                step="0.01"
+                                                
                                                 min="0.01"
                                                 max={calculateDueAmount(
                                                     selectedCustomer.sales,
@@ -1691,7 +1691,7 @@ export default function Customers({ customers, filters, accounts }) {
                                             <input
                                                 type="number"
                                                 name="amount"
-                                                step="0.01"
+                                                
                                                 min="0.01"
                                                 value={paymentData.amount}
                                                 onChange={
@@ -2776,7 +2776,7 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
+                                                // 
                                                 // min="0"
                                                 value={
                                                     customerForm.data
@@ -2825,7 +2825,7 @@ export default function Customers({ customers, filters, accounts }) {
                                             </span>
                                             <input
                                                 type="number"
-                                                // step="0.01"
+                                                // 
                                                 // min="0"
                                                 value={
                                                     customerForm.data.due_amount

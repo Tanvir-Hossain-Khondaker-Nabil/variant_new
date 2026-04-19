@@ -187,7 +187,7 @@ export default function AccountCreate() {
                             </span>
                             <input
                                 type="number"
-                                step="0.01"
+                                
                                 min="0"
                                 value={data.opening_balance}
                                 onChange={(e) => setData('opening_balance', e.target.value)}

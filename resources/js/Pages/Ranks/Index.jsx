@@ -68,13 +68,13 @@ export default function Ranks({ ranks }) {
                                     <label className="label font-black text-[10px] uppercase text-gray-400 tracking-widest">Base Salary (Monthly)</label>
                                     <div className="relative">
                                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
-                                        <input type="number" step="0.01" value={data.base_salary} onChange={e => setData('base_salary', e.target.value)} className="input input-bordered w-full pl-10 rounded-xl font-mono font-black border-gray-300" required />
+                                        <input type="number"  value={data.base_salary} onChange={e => setData('base_salary', e.target.value)} className="input input-bordered w-full pl-10 rounded-xl font-mono font-black border-gray-300" required />
                                     </div>
                                 </div>
 
                                 <div className="form-control">
                                     <label className="label font-black text-[10px] uppercase text-gray-400 tracking-widest">Annual Increment %</label>
-                                    <input type="number" step="0.01" value={data.salary_increment_percentage} onChange={e => setData('salary_increment_percentage', e.target.value)} className="input input-bordered rounded-xl font-mono font-black border-gray-300" required />
+                                    <input type="number"  value={data.salary_increment_percentage} onChange={e => setData('salary_increment_percentage', e.target.value)} className="input input-bordered rounded-xl font-mono font-black border-gray-300" required />
                                 </div>
 
                                 <div className="form-control">

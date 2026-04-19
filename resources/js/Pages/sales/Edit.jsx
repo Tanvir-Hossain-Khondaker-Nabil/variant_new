@@ -268,7 +268,7 @@ export default function SaleEdit({ sale }) {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            
                                             min="0"
                                             value={data.grand_total}
                                             onChange={(e) => setData("grand_total", e.target.value)}
@@ -293,7 +293,7 @@ export default function SaleEdit({ sale }) {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            
                                             min="0"
                                             value={data.paid_amount}
                                             onChange={(e) => setData("paid_amount", e.target.value)}
@@ -318,7 +318,7 @@ export default function SaleEdit({ sale }) {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            
                                             min="0"
                                             value={data.due_amount}
                                             onChange={(e) => setData("due_amount", e.target.value)}

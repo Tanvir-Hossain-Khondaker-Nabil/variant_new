@@ -236,7 +236,7 @@ export default function EmployeeAwards({ employeeAwards, filters, employees, awa
                                     <label className="block text-sm font-medium text-gray-700">Cash Amount (৳) *</label>
                                     <input
                                         type="number"
-                                        step="0.01"
+                                        
                                         min="0"
                                         value={data.cash_amount}
                                         onChange={e => setData('cash_amount', e.target.value)}

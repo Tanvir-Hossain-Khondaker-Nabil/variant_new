@@ -934,7 +934,7 @@ export default function CustomerLedger({
                                                         ? selectedDue
                                                         : dueAmount
                                                 }
-                                                step="0.01"
+                                                
                                                 required
                                             />
                                         </div>

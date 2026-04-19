@@ -70,6 +70,7 @@ export default function AddSale({
     const [partialPayment, setPartialPayment] = useState(false);
     const [paidAmount, setPaidAmount] = useState(0);
     const [manualPaymentOverride, setManualPaymentOverride] = useState(false);
+    const [selectedIdentifiers, setSelectedIdentifiers] = useState({});
 
     // Cart state
     const [cart, setCart] = useState([]);
@@ -107,6 +108,44 @@ export default function AddSale({
     const [pickupSupplierId, setPickupSupplierId] = useState("");
 
     const dropdownRefs = useRef({});
+
+    const getSelectedIdentifierValues = useCallback((itemKey) => {
+        return Array.isArray(selectedIdentifiers[itemKey])
+            ? selectedIdentifiers[itemKey]
+            : [];
+    }, [selectedIdentifiers]);
+
+    const updateSelectedIdentifier = useCallback((itemKey, slotIndex, identifierId) => {
+        setSelectedIdentifiers((prev) => {
+            const current = Array.isArray(prev[itemKey]) ? [...prev[itemKey]] : [];
+            current[slotIndex] = identifierId ? Number(identifierId) : "";
+
+            return {
+                ...prev,
+                [itemKey]: current,
+            };
+        });
+    }, []);
+
+    const autoAssignIdentifiers = useCallback((availableIdentifiers = [], qty = 1, existing = []) => {
+        const next = Array.isArray(existing) ? [...existing].slice(0, qty) : [];
+        const used = new Set(next.filter(Boolean).map(Number));
+
+        for (let i = 0; i < qty; i++) {
+            if (!next[i]) {
+                const candidate = availableIdentifiers.find(
+                    (identifier) => !used.has(Number(identifier.id))
+                );
+
+                if (candidate) {
+                    next[i] = Number(candidate.id);
+                    used.add(Number(candidate.id));
+                }
+            }
+        }
+
+        return next.slice(0, qty);
+    }, []);
 
     // ---------------- Unit Conversion Helper Functions ----------------
     const getAvailableUnitsForStock = useCallback(
@@ -244,6 +283,14 @@ export default function AddSale({
                 product_unit_type: item.unit_type || "piece",
                 is_fraction_allowed: item.is_fraction_allowed || false,
                 sku: s.variant?.sku || null,
+                identifiers: s.identifiers || [],
+                is_tracking_enabled:
+                    !!p.is_tracking_enabled &&
+                    (p.tracking_type === "imei" || p.tracking_type === "serial"),
+                tracking_type: p.tracking_type || null,
+                available_identifiers: (s.identifiers || []).filter(
+                    (identifier) => String(identifier.status || "").toLowerCase() === "available"
+                ),
             });
         }
 
@@ -273,14 +320,32 @@ export default function AddSale({
 
     const filteredCatalog = useMemo(() => {
         const q = search.trim().toLowerCase();
+
         return catalog.filter((p) => {
             const okCategory =
                 categoryFilter === "All Categories" ? true : p.category_name === categoryFilter;
-            const okBrand = brandFilter === "All Brands" ? true : p.brand_name === brandFilter;
+
+            const okBrand =
+                brandFilter === "All Brands" ? true : p.brand_name === brandFilter;
+
             const okSearch = !q
                 ? true
                 : (p.name || "").toLowerCase().includes(q) ||
-                (p.product_no || "").toLowerCase().includes(q);
+                (p.product_no || "").toLowerCase().includes(q) ||
+                (p.variants || []).some((v) => {
+                    const batchNo = String(v.batch_no || "").toLowerCase();
+                    const sku = String(v.sku || "").toLowerCase();
+                    const identifierMatch = (v.identifiers || []).some((identifier) =>
+                        String(identifier.identifier_value || "").toLowerCase().includes(q)
+                    );
+
+                    return (
+                        batchNo.includes(q) ||
+                        sku.includes(q) ||
+                        identifierMatch
+                    );
+                });
+
             return okCategory && okBrand && okSearch;
         });
     }, [catalog, search, categoryFilter, brandFilter]);
@@ -320,10 +385,27 @@ export default function AddSale({
             if (!product || !variant) return;
 
             const key = `${product.id}-${variant.variant_id || "0"}-${variant.stock_id}`;
-
             const existingItem = cart.find((x) => x.key === key);
+
+            const isTrackedProduct =
+                !!variant.is_tracking_enabled &&
+                (variant.tracking_type === "imei" || variant.tracking_type === "serial");
+
+            const availableIdentifiers = Array.isArray(variant.available_identifiers)
+                ? variant.available_identifiers
+                : [];
+
             if (existingItem) {
-                changeQty(key, n(existingItem.qty) + 1);
+                const nextQty = n(existingItem.qty) + 1;
+
+                if (isTrackedProduct && nextQty > availableIdentifiers.length) {
+                    alert(
+                        `Only ${availableIdentifiers.length} ${variant.tracking_type} available for this item`
+                    );
+                    return;
+                }
+
+                changeQty(key, nextQty);
                 return;
             }
 
@@ -332,7 +414,14 @@ export default function AddSale({
 
             let defaultUnit =
                 product.min_sale_unit || product.default_unit || availableUnitsForStock[0] || "piece";
-            if (!availableUnitsForStock.includes(defaultUnit)) defaultUnit = availableUnitsForStock[0] || "piece";
+
+            if (!availableUnitsForStock.includes(defaultUnit)) {
+                defaultUnit = availableUnitsForStock[0] || "piece";
+            }
+
+            if (isTrackedProduct) {
+                defaultUnit = "piece";
+            }
 
             const unitType = product.unit_type || "piece";
             let basePricePerBaseUnit = variant.sale_price;
@@ -346,12 +435,8 @@ export default function AddSale({
             }
 
             let unitPrice = variant.sale_price;
-            if (variant.purchase_unit !== defaultUnit && unitType !== "piece") {
-                unitPrice = calculatePriceForUnit(
-                    basePricePerBaseUnit,
-                    defaultUnit,
-                    unitType
-                );
+            if (!isTrackedProduct && variant.purchase_unit !== defaultUnit && unitType !== "piece") {
+                unitPrice = calculatePriceForUnit(basePricePerBaseUnit, defaultUnit, unitType);
             }
 
             const newItem = {
@@ -370,23 +455,43 @@ export default function AddSale({
                 maxQty: n(variant.quantity),
                 total_price: unitPrice,
                 product_unit_type: unitType,
-                is_fraction_allowed: product.is_fraction_allowed || false,
+                is_fraction_allowed: isTrackedProduct ? false : (product.is_fraction_allowed || false),
                 original_purchase_unit: variant.purchase_unit,
                 original_sale_price: variant.sale_price,
                 base_quantity: variant.base_quantity || variant.quantity,
-                available_units: availableUnitsForStock,
+                available_units: isTrackedProduct ? ["piece"] : availableUnitsForStock,
                 base_price_per_base_unit: basePricePerBaseUnit,
+
+                is_tracking_enabled: isTrackedProduct,
+                tracking_type: variant.tracking_type || null,
+                available_identifiers: availableIdentifiers,
             };
 
             setCart((prev) => [...prev, newItem]);
 
             setSelectedUnits((prev) => ({ ...prev, [key]: defaultUnit }));
             setUnitQuantities((prev) => ({ ...prev, [key]: 1 }));
-            setAvailableUnits((prev) => ({ ...prev, [key]: availableUnitsForStock }));
+            setAvailableUnits((prev) => ({
+                ...prev,
+                [key]: isTrackedProduct ? ["piece"] : availableUnitsForStock,
+            }));
             setUnitPrices((prev) => ({ ...prev, [key]: unitPrice }));
             setBasePrices((prev) => ({ ...prev, [key]: basePricePerBaseUnit }));
+
+            if (isTrackedProduct) {
+                setSelectedIdentifiers((prev) => ({
+                    ...prev,
+                    [key]: autoAssignIdentifiers(availableIdentifiers, 1, []),
+                }));
+            }
         },
-        [cart, getAvailableUnitsForStock, calculateBasePricePerBaseUnit, calculatePriceForUnit]
+        [
+            cart,
+            getAvailableUnitsForStock,
+            calculateBasePricePerBaseUnit,
+            calculatePriceForUnit,
+            autoAssignIdentifiers,
+        ]
     );
 
     const removeCartItem = (key) => {
@@ -422,10 +527,19 @@ export default function AddSale({
             delete ns[key];
             return ns;
         });
+        setSelectedIdentifiers((prev) => {
+            const ns = { ...prev };
+            delete ns[key];
+            return ns;
+        });
     };
 
     const changeQty = (key, nextQty) => {
         const item = cart.find((x) => x.key === key);
+        if (item.is_tracking_enabled && newUnit !== "piece") {
+            alert("Tracked product must be sold in piece unit");
+            return;
+        }
         if (!item) return;
 
         const selectedUnit = selectedUnits[key] || item.unit;
@@ -436,6 +550,22 @@ export default function AddSale({
             return;
         }
 
+        if (item.is_tracking_enabled) {
+            if (q % 1 !== 0) {
+                alert("Tracked product quantity must be whole number");
+                return;
+            }
+
+            const availableIdentifierCount = Array.isArray(item.available_identifiers)
+                ? item.available_identifiers.length
+                : 0;
+
+            if (q > availableIdentifierCount) {
+                alert(`Only ${availableIdentifierCount} ${item.tracking_type} available for this item`);
+                return;
+            }
+        }
+
         if (item.product_unit_type && item.product_unit_type !== "piece") {
             const requestedBaseQty = convertToBase(q, selectedUnit, item.product_unit_type);
             if (requestedBaseQty > item.base_quantity) {
@@ -443,12 +573,14 @@ export default function AddSale({
                 alert(`Exceeds available stock! Available: ${availableInUnit.toFixed(3)} ${selectedUnit.toUpperCase()}`);
                 return;
             }
-        } else if (q > item.maxQty) {
+        } else if (!item.is_tracking_enabled && q > item.maxQty) {
             alert(`Exceeds available stock! Available: ${item.maxQty}`);
             return;
         }
 
-        if (q < 0.001) q = 0.001;
+        if (q < (item.is_tracking_enabled ? 1 : 0.001)) {
+            q = 1;
+        }
 
         const unitPrice = unitPrices[key] || item.unit_price;
 
@@ -460,10 +592,25 @@ export default function AddSale({
         );
 
         setUnitQuantities((prev) => ({ ...prev, [key]: q }));
+
+        if (item.is_tracking_enabled) {
+            setSelectedIdentifiers((prev) => ({
+                ...prev,
+                [key]: autoAssignIdentifiers(
+                    item.available_identifiers || [],
+                    q,
+                    prev[key] || []
+                ),
+            }));
+        }
     };
 
     const handleUnitChange = (key, newUnit) => {
         const item = cart.find((x) => x.key === key);
+        if (item.is_tracking_enabled && newUnit !== "piece") {
+            alert("Tracked product must be sold in piece unit");
+            return;
+        }
         if (!item) return;
 
         const oldUnit = selectedUnits[key] || item.unit;
@@ -539,22 +686,45 @@ export default function AddSale({
         const batchMap = new Map();
         const skuMap = new Map();
         const productCodeMap = new Map();
+        const identifierMap = new Map();
 
         for (const p of catalog) {
             if (p?.product_no) {
                 productCodeMap.set(String(p.product_no).trim().toLowerCase(), p);
             }
+
             for (const v of p.variants || []) {
                 if (v?.batch_no) {
-                    batchMap.set(String(v.batch_no).trim().toLowerCase(), { product: p, variant: v });
+                    batchMap.set(String(v.batch_no).trim().toLowerCase(), {
+                        product: p,
+                        variant: v,
+                    });
                 }
+
                 if (v?.sku) {
-                    skuMap.set(String(v.sku).trim().toLowerCase(), { product: p, variant: v });
+                    skuMap.set(String(v.sku).trim().toLowerCase(), {
+                        product: p,
+                        variant: v,
+                    });
+                }
+
+                for (const identifier of v.identifiers || []) {
+                    const identifierValue = String(
+                        identifier?.identifier_value || ""
+                    ).trim().toLowerCase();
+
+                    if (identifierValue) {
+                        identifierMap.set(identifierValue, {
+                            product: p,
+                            variant: v,
+                            identifier,
+                        });
+                    }
                 }
             }
         }
 
-        return { batchMap, skuMap, productCodeMap };
+        return { batchMap, skuMap, productCodeMap, identifierMap };
     }, [catalog]);
 
     const handleBarcodeScan = useCallback(
@@ -568,6 +738,12 @@ export default function AddSale({
             const byBatch = scanIndex.batchMap.get(key);
             if (byBatch) {
                 addToCart(byBatch.product, byBatch.variant);
+                return;
+            }
+
+            const byIdentifier = scanIndex.identifierMap.get(key);
+            if (byIdentifier) {
+                addToCart(byIdentifier.product, byIdentifier.variant);
                 return;
             }
 
@@ -665,7 +841,7 @@ export default function AddSale({
     );
     const totalSubTotal = useMemo(() => subTotal + pickupSubTotal, [subTotal, pickupSubTotal]);
     const taxAmount = useMemo(() => (totalSubTotal * n(taxRate)) / 100, [totalSubTotal, taxRate]);
-    
+
     const discountAmount = useMemo(() => {
         if (form.data.discount_type === 'percentage') {
             return (totalSubTotal * n(discountValue)) / 100;
@@ -673,7 +849,7 @@ export default function AddSale({
             return n(discountValue);
         }
     }, [totalSubTotal, discountValue, form.data.discount_type]);
-    
+
     const grandTotal = useMemo(
         () => totalSubTotal + taxAmount - discountAmount,
         [totalSubTotal, taxAmount, discountAmount]
@@ -736,6 +912,11 @@ export default function AddSale({
             unit_price: n(i.unit_price),
             total_price: n(i.total_price),
             shadow_sell_price: n(i.shadow_unit_price),
+            identifier_ids: i.is_tracking_enabled
+                ? (getSelectedIdentifierValues(i.key) || [])
+                    .filter((value) => value !== "" && value !== null && value !== undefined)
+                    .map((value) => Number(value))
+                : [],
         }));
 
         const formattedPickupItems = pickupItems.map((item) => ({
@@ -747,12 +928,12 @@ export default function AddSale({
             sale_price: item.sale_price,
             total_price: item.total_price,
         }));
-        
+
         const walkIn = !customerId && !customerName.trim() && !customerPhone.trim();
 
         let discountRate = 0;
         let flatDiscount = 0;
-        
+
         if (form.data.discount_type === 'percentage') {
             discountRate = n(discountValue);
             flatDiscount = 0;
@@ -973,6 +1154,26 @@ export default function AddSale({
             return item.qty > item.maxQty;
         });
 
+        const trackedInvalidItems = cart.filter((item) => {
+            if (!item.is_tracking_enabled) return false;
+
+            const qty = parseInt(item.qty || 0, 10);
+            const selected = (getSelectedIdentifierValues(item.key) || []).filter(Boolean);
+            const unique = new Set(selected.map(String));
+
+            if ((item.unit || "piece") !== "piece") return true;
+            if (qty <= 0) return true;
+            if (selected.length !== qty) return true;
+            if (unique.size !== selected.length) return true;
+
+            return false;
+        });
+
+        if (trackedInvalidItems.length > 0) {
+            alert("Please select valid IMEI / Serial for all tracked items");
+            return;
+        }
+
         if (outOfStockItems.length > 0) {
             const itemNames = outOfStockItems
                 .map((item) => {
@@ -1061,7 +1262,7 @@ export default function AddSale({
                                             <input
                                                 ref={barcodeRef}
                                                 className="input input-bordered input-sm w-full md:w-64 pl-10"
-                                                placeholder="Search products or scan barcode..."
+                                                placeholder="Search / scan by product, batch, IMEI, serial..."
                                                 value={search}
                                                 onChange={(e) => {
                                                     setSearch(e.target.value);
@@ -1250,7 +1451,7 @@ export default function AddSale({
                                                     const selectedUnit = selectedUnits[i.key] || i.unit || "piece";
                                                     const unitQuantity = unitQuantities[i.key] || i.qty || 1;
                                                     const unitPrice = unitPrices[i.key] || i.unit_price;
-
+                                                    const selectedForItem = getSelectedIdentifierValues(i.key);
                                                     return (
                                                         <div
                                                             key={i.key}
@@ -1316,13 +1517,20 @@ export default function AddSale({
                                                                             className="input input-bordered input-xs !w-[100px] text-center font-medium"
                                                                             type="number"
                                                                             value={unitQuantity}
+                                                                            min={1}
                                                                             onChange={(e) => changeQty(i.key, Number(e.target.value))}
                                                                         />
 
                                                                         <button
+                                                                            style={{ zIndex: "99999999999" }}
                                                                             type="button"
                                                                             className="btn btn-xs btn-square btn-outline border-gray-300 hover:bg-gray-100"
-                                                                            onClick={() => changeQty(i.key, n(i.qty) + (i.is_fraction_allowed ? 0.001 : 1))}
+                                                                            onClick={() =>
+                                                                                changeQty(
+                                                                                    i.key,
+                                                                                    n(i.qty) + (i.is_tracking_enabled ? 1 : (i.is_fraction_allowed ? 0.001 : 1))
+                                                                                )
+                                                                            }
                                                                         >
                                                                             <Plus size={12} className="text-gray-700" />
                                                                         </button>
@@ -1348,6 +1556,60 @@ export default function AddSale({
                                                                     </button>
                                                                 </div>
                                                             </div>
+                                                            {i.is_tracking_enabled && (
+                                                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <h4 className="text-sm font-semibold text-amber-800">
+                                                                            Select {i.tracking_type === "imei" ? "IMEI" : "Serial"}
+                                                                        </h4>
+                                                                        <span className="text-xs text-amber-700">
+                                                                            Required: {Number(i.qty || 0)}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-1 gap-2">
+                                                                        {Array.from({ length: Number(i.qty || 0) }).map((_, slotIndex) => (
+                                                                            <div key={`${i.key}-identifier-${slotIndex}`}>
+                                                                                <label className="label py-1">
+                                                                                    <span className="label-text text-xs font-medium">
+                                                                                        {i.tracking_type === "imei" ? "IMEI" : "Serial"} #{slotIndex + 1}
+                                                                                    </span>
+                                                                                </label>
+
+                                                                                <select
+                                                                                    className="select select-bordered select-sm w-full"
+                                                                                    value={selectedForItem[slotIndex] || ""}
+                                                                                    onChange={(e) =>
+                                                                                        updateSelectedIdentifier(i.key, slotIndex, e.target.value)
+                                                                                    }
+                                                                                >
+                                                                                    <option value="">
+                                                                                        Select {i.tracking_type === "imei" ? "IMEI" : "Serial"}
+                                                                                    </option>
+
+                                                                                    {(i.available_identifiers || []).map((identifier) => {
+                                                                                        const alreadySelected = selectedForItem.some(
+                                                                                            (value, idx) =>
+                                                                                                idx !== slotIndex &&
+                                                                                                String(value) === String(identifier.id)
+                                                                                        );
+
+                                                                                        return (
+                                                                                            <option
+                                                                                                key={identifier.id}
+                                                                                                value={identifier.id}
+                                                                                                disabled={alreadySelected}
+                                                                                            >
+                                                                                                {identifier.identifier_value}
+                                                                                            </option>
+                                                                                        );
+                                                                                    })}
+                                                                                </select>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
@@ -1463,7 +1725,7 @@ export default function AddSale({
                                         <div className="form-control mb-3">
                                             <label className="label py-1">
                                                 <span className="label-text text-xs flex items-center gap-1">
-                                                    <Percent size={10} /> 
+                                                    <Percent size={10} />
                                                     {form.data.discount_type === 'percentage' ? 'Discount Percentage' : 'Discount Amount'}
                                                 </span>
                                             </label>
@@ -1473,8 +1735,8 @@ export default function AddSale({
                                                 value={discountValue}
                                                 onChange={(e) => setDiscountValue(n(e.target.value))}
                                                 placeholder={form.data.discount_type === 'percentage' ? 'Enter discount %' : 'Enter discount amount'}
-                                                // min="0"
-                                                // step={form.data.discount_type === 'percentage' ? "0.1" : "0.01"}
+                                            // min="0"
+                                            // step={form.data.discount_type === 'percentage' ? "0.1" : "0.01"}
                                             />
                                         </div>
 
@@ -1702,7 +1964,7 @@ export default function AddSale({
                                                 </label>
                                                 <input
                                                     type="number"
-                                                    // step="0.01"
+                                                    // 
                                                     className="input input-bordered input-sm w-full bg-white border-gray-300 text-gray-800"
                                                     value={paidAmount}
                                                     onChange={(e) => handlePaidAmountChange(e.target.value)}
@@ -1922,7 +2184,7 @@ export default function AddSale({
                                         value={pickupUnitPrice}
                                         onChange={(e) => setPickupUnitPrice(e.target.value)}
                                         min="0"
-                                        step="0.01"
+
                                         required
                                     />
                                 </div>
@@ -1939,7 +2201,7 @@ export default function AddSale({
                                         value={pickupSalePrice}
                                         onChange={(e) => setPickupSalePrice(e.target.value)}
                                         min="0"
-                                        step="0.01"
+
                                         placeholder="0.00"
                                         required
                                     />

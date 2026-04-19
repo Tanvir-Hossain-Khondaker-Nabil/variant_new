@@ -1084,7 +1084,7 @@ export default function AddPurchase({
                 <span className="absolute left-3 top-3 text-gray-500">৳</span>
                 <input
                   type="number"
-                  step="0.01"
+                  
                   min="0"
                   className="input input-bordered w-full rounded-xl text-sm pl-8"
                   value={transportationCost}
@@ -1175,7 +1175,7 @@ export default function AddPurchase({
                     <div className="form-control">
                       <input
                         type="number"
-                        step="0.01"
+                        
                         className="input input-bordered input-xs w-full bg-white border-gray-300 font-mono text-[11px]"
                         value={paidAmount}
                         onChange={handleManualPaymentInput}
@@ -1544,7 +1544,7 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
                                   value={
                                     item.unit_price ||
@@ -1573,7 +1573,7 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
                                   value={
                                     item.sale_price ||

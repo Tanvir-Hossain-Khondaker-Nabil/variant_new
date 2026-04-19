@@ -132,7 +132,7 @@ export default function Awards({ awards }) {
                                     <label className="block text-sm font-medium text-gray-700">Cash Reward (৳) *</label>
                                     <input
                                         type="number"
-                                        step="0.01"
+                                        
                                         min="0"
                                         value={data.cash_reward}
                                         onChange={e => setData('cash_reward', e.target.value)}

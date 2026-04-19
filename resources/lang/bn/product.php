@@ -182,5 +182,7 @@ return [
     'unit_length_desc' => 'দৈর্ঘ্য দ্বারা পরিমাপ করা হয় (মিটার, সেমি)',
     // Table headers
 
+    'filtered_data_count' => 'ফিল্টার করা ডাটার সংখ্যা',
+    'sale_price_total' => 'মোট বিক্রয় মূল্য',
 
 ];

@@ -309,7 +309,7 @@ export default function Create({ companies, users }) {
                                     onChange={handleAdvanceAmountChange}
                                     className="w-full px-4 py-3 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                     min="0"
                                 />
                                 {errors.advance_amount && (
@@ -328,7 +328,7 @@ export default function Create({ companies, users }) {
                                     readOnly
                                     className="w-full px-4 py-3 border border-yellow-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-200 bg-gray-50 cursor-not-allowed"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
                                     {t('dealership.calculated_automatically', 'Calculated automatically: Credit Limit - Advance Amount')}
@@ -346,7 +346,7 @@ export default function Create({ companies, users }) {
                                     onChange={handleCreditLimitChange}
                                     className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
                                     placeholder="0.00"
-                                    step="0.01"
+                                    
                                     min="0"
                                 />
                             </div>

@@ -131,7 +131,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'salesReturn.edit',
             'salesReturn.update',
             'return.approve',
-            
+
 
             // Sales List
             'sales_list.view',
@@ -396,7 +396,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales_return.delete',
             'sales_return.show',
 
-             //system 
+            //system 
             'system.index',
             'system.edit',
 
@@ -436,6 +436,22 @@ class RolesAndPermissionsSeeder extends Seeder
             'user_subscriptions.view',
             'user_subscriptions.renew',
             'user_subscriptions.edit',
+
+            'loans.view',
+            'loans.create',
+            'loans.edit',
+            'loans.delete',
+            'loans.approve',
+            'loans.reject',
+            'loans.disburse',
+            'loans.close',
+            'loans.repayments.view',
+            'loans.repayments.collect',
+
+            'borrowers.view',
+            'borrowers.create',
+            'borrowers.edit',
+            'borrowers.delete',
         ];
 
 
@@ -456,7 +472,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'plans.edit',
             'plans.update',
             'plans.delete',
-            
+
             // Subscriptions
             'subscriptions.view',
             'subscriptions.create',
@@ -496,7 +512,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // ========== USERS ==========
         $superAdminUser = User::updateOrCreate(
-            ['email' => 'superadmin@system.com'], 
+            ['email' => 'superadmin@system.com'],
             [
                 'name' => 'Super Admin',
                 'role_id' => User::SUPERADMIN_ROLE,
@@ -579,7 +595,7 @@ class RolesAndPermissionsSeeder extends Seeder
             ]
         );
 
-     
+
 
 
 

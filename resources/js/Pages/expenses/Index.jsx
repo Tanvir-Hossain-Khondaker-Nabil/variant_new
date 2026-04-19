@@ -471,7 +471,7 @@ export default function Index({
                                 <div className="relative">
                                     <input
                                         type="number"
-                                        step="0.01"
+                                        
                                         min="0.01"
                                         value={data.amount}
                                         onChange={(e) => setData("amount", e.target.value)}
