@@ -512,13 +512,17 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
 
                     .variant-invoice-inner {
                         width: 210mm !important;
+                        height: 297mm !important;
+                        min-height: 297mm !important;
+                        max-height: 297mm !important;
                         margin-left: auto !important;
                         margin-right: auto !important;
                         padding-top: 8mm !important;
                         padding-bottom: 0 !important;
                         font-family: "Times New Roman", Times, serif !important;
                         color: #000000 !important;
-                        overflow: visible !important;
+                        overflow: hidden !important;
+                        position: relative !important;
                     }
 
                     .variant-header {
@@ -631,11 +635,21 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
                     }
 
                     .variant-signature-section {
-                        margin-top: 6mm !important;
+                        position: absolute !important;
+                        left: 10mm !important;
+                        right: 10mm !important;
+                        bottom: 9mm !important;
+                        margin-top: 0 !important;
                     }
 
                     .variant-signature-box {
                         font-size: 15px !important;
+                    }
+
+                    .variant-powered-by {
+                        font-size: 11px !important;
+                        font-weight: 700 !important;
+                        text-align: center !important;
                     }
                 }
             `}</style>
@@ -692,7 +706,7 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
                     id="variantInvoicePrintArea"
                     className="variant-invoice-paper bg-white mx-auto shadow-sm border border-gray-200"
                     style={{
-                        minHeight: "297mm",
+                        minHeight: "157mm",
                     }}
                 >
                     <div className="variant-print-scale">
@@ -700,12 +714,15 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
                             className="variant-invoice-inner"
                             style={{
                                 width: "210mm",
+                                minHeight: "157mm",
                                 marginLeft: "auto",
                                 marginRight: "auto",
                                 paddingTop: "8mm",
-                                paddingBottom: "0",
+                                paddingBottom: "18mm",
                                 fontFamily: `"Times New Roman", Times, serif`,
                                 color: "#000000",
+                                position: "relative",
+                                overflow: "hidden",
                             }}
                         >
                             <div
@@ -1182,122 +1199,38 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
                                         lineHeight: "1.08",
                                     }}
                                 >
-                                    <div
-                                        className="variant-warranty-title"
-                                        style={{
-                                            textAlign: "center",
-                                            fontSize: "18px",
-                                            lineHeight: "1",
-                                            fontWeight: "700",
-                                            textDecoration: "underline",
-                                            marginBottom: "1mm",
-                                        }}
-                                    >
-                                        WARRANTY POLICY
-                                    </div>
-
-                                    {warrantyPolicyLines.map((line, index) => {
-                                        if (line.type === "heading") {
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    className="variant-warranty-heading"
-                                                    style={{
-                                                        fontWeight: "700",
-                                                        textDecoration: "underline",
-                                                        marginTop: "0.7mm",
-                                                        marginLeft: "7mm",
-                                                    }}
-                                                >
-                                                    {line.text}
-                                                </div>
-                                            );
-                                        }
-
-                                        if (line.type === "bullet") {
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    className="variant-warranty-bullet"
-                                                    style={{
-                                                        display: "grid",
-                                                        gridTemplateColumns: "5mm 1fr",
-                                                        marginLeft: "7mm",
-                                                    }}
-                                                >
-                                                    <span
-                                                        className="variant-warranty-bullet-dot"
-                                                        style={{
-                                                            fontSize: "14px",
-                                                            lineHeight: "9px",
-                                                        }}
-                                                    >
-                                                        •
-                                                    </span>
-                                                    <span>
-                                                        {line.text}
-                                                    </span>
-                                                </div>
-                                            );
-                                        }
-
-                                        if (line.type === "paragraph-bold") {
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    style={{
-                                                        fontWeight: "700",
-                                                        marginTop: "0.7mm",
-                                                        marginLeft: "7mm",
-                                                    }}
-                                                >
-                                                    {line.text}
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                            <div
-                                                key={index}
-                                                style={{
-                                                    marginBottom: "0.7mm",
-                                                }}
-                                            >
-                                                {line.text}
-                                            </div>
-                                        );
-                                    })}
-
-                                    <div
-                                        className="variant-confirm-text"
-                                        style={{
-                                            marginTop: "3mm",
-                                            textAlign: "center",
-                                            fontWeight: "700",
-                                            fontSize: "12px",
-                                            lineHeight: "1.05",
-                                        }}
-                                    >
-                                        I have been informed of and understood all the above-mentioned terms and conditions and purchased the product
-                                        <br />
-                                        from {brandPolicyName} accordingly.
-                                    </div>
                                 </div>
                             </div>
 
                             <div
                                 className="variant-signature-section flex items-end justify-between"
                                 style={{
-                                    marginTop: "6mm",
+                                    position: "absolute",
+                                    left: "10mm",
+                                    right: "10mm",
+                                    bottom: "9mm",
+                                    marginTop: "0",
                                     fontSize: "11px",
                                     lineHeight: "1.1",
                                 }}
                             >
-                                <div>
+                                <div style={{ width: "55mm", textAlign: "left" }}>
                                     {auth?.user?.name || purchase?.creator?.name || purchase?.created_by?.name ? (
                                         <>Printed By: {auth?.user?.name || purchase?.creator?.name || purchase?.created_by?.name}</>
                                     ) : null}
                                 </div>
+
+                                {/* <div
+                                    className="variant-powered-by"
+                                    style={{
+                                        width: "55mm",
+                                        textAlign: "center",
+                                        fontSize: "11px",
+                                        fontWeight: "700",
+                                    }}
+                                >
+                                    Powered By {businessName || "Variant"}
+                                </div> */}
 
                                 <div
                                     className="variant-signature-box"

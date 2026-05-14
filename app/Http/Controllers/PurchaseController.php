@@ -543,13 +543,12 @@ class PurchaseController extends Controller
             return true;
         }
 
-        if ($product->is_tracking_enabled) {
-            return true;
+        if (!empty($item['identifiers']) && is_array($item['identifiers'])) {
+            return count(array_filter($item['identifiers'])) > 0;
         }
 
-        $identifiers = $item['identifiers'] ?? [];
-
-        return is_array($identifiers) && count(array_filter($identifiers, fn($value) => trim((string) $value) !== '')) > 0;
+        return !empty($product->is_tracking_enabled)
+            && in_array($product->tracking_type, ['imei', 'serial']);
     }
 
     // Store purchase: barcode ALWAYS created from batch_no
@@ -1601,9 +1600,10 @@ class PurchaseController extends Controller
         $qty = (int) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
         $unit = $item['unit'] ?? 'piece';
         $trackingType = trim((string) ($item['tracking_type'] ?? $product->tracking_type ?? 'imei'));
+        $identifiers = $item['identifiers'] ?? [];
+
         $purchaseCondition = $item['purchase_condition'] ?? 'new';
         $usedSource = $item['used_source'] ?? null;
-        $identifiers = $item['identifiers'] ?? [];
 
         if ($unit !== 'piece') {
             throw ValidationException::withMessages([
@@ -1636,41 +1636,56 @@ class PurchaseController extends Controller
 
         foreach ($cleaned as $identifierValue) {
             $existingIdentifier = StockIdentifier::whereRaw('LOWER(identifier_value) = ?', [
-                    strtolower($identifierValue)
-                ])
+                strtolower($identifierValue)
+            ])
                 ->lockForUpdate()
                 ->first();
 
+            /*
+            |--------------------------------------------------------------------------
+            | New product
+            |--------------------------------------------------------------------------
+            */
             if ($purchaseCondition === 'new') {
                 if ($existingIdentifier) {
                     throw ValidationException::withMessages([
-                        'items' => "{$trackingType} {$identifierValue} already exists. For previously sold product, choose Used Product + Sold By Us Before."
+                        'items' => "{$trackingType} {$identifierValue} already exists. If this is old product sold by you before, select Used + Sold By Us."
                     ]);
                 }
 
                 continue;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Used product from external shop/person
+            |--------------------------------------------------------------------------
+            */
             if ($purchaseCondition === 'used' && $usedSource === 'external') {
                 if ($existingIdentifier) {
                     throw ValidationException::withMessages([
-                        'items' => "{$trackingType} {$identifierValue} already exists in this system. If this product was sold by you before, choose Used Product + Sold By Us Before."
+                        'items' => "{$trackingType} {$identifierValue} already exists in system. If this was sold by you before, select Used + Sold By Us."
                     ]);
                 }
 
                 continue;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Used product sold by us before
+            |--------------------------------------------------------------------------
+            */
             if ($purchaseCondition === 'used' && $usedSource === 'sold_by_us') {
                 if (!$existingIdentifier) {
                     throw ValidationException::withMessages([
-                        'items' => "{$trackingType} {$identifierValue} was not found in your sold records. Use Used Product + External if this was not sold by you."
+                        'items' => "{$trackingType} {$identifierValue} not found in sold records. Use Used + External if it was not sold by you."
                     ]);
                 }
 
                 if ($existingIdentifier->status !== 'sold') {
                     throw ValidationException::withMessages([
-                        'items' => "{$trackingType} {$identifierValue} exists but status is {$existingIdentifier->status}. Only sold identifiers can be repurchased as Sold By Us."
+                        'items' => "{$trackingType} {$identifierValue} exists but status is {$existingIdentifier->status}. Only sold identifier can be repurchased as Sold By Us."
                     ]);
                 }
 
@@ -1692,6 +1707,7 @@ class PurchaseController extends Controller
         }
 
         $trackingType = trim((string) ($item['tracking_type'] ?? $product->tracking_type ?? 'imei'));
+
         $purchaseCondition = $item['purchase_condition'] ?? 'new';
         $usedSource = $item['used_source'] ?? null;
 
@@ -1702,12 +1718,20 @@ class PurchaseController extends Controller
                 continue;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Used + Sold By Us
+            |--------------------------------------------------------------------------
+            | Previous working sale flow needs this row to become fresh available stock.
+            | So we MUST clear old sale_id/sale_item_id/sold_at here.
+            |--------------------------------------------------------------------------
+            */
             if ($purchaseCondition === 'used' && $usedSource === 'sold_by_us') {
                 $existingIdentifier = StockIdentifier::whereRaw('LOWER(identifier_value) = ?', [
-                        strtolower($identifierValue)
-                    ])
-                    ->where('status', 'sold')
+                    strtolower($identifierValue)
+                ])
                     ->where('product_id', $product->id)
+                    ->where('status', 'sold')
                     ->lockForUpdate()
                     ->first();
 
@@ -1722,18 +1746,33 @@ class PurchaseController extends Controller
                     'variant_id' => $purchaseItem->variant_id,
                     'identifier_type' => $trackingType,
                     'identifier_value' => $identifierValue,
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | IMPORTANT: restore previous sale-compatible state
+                    |--------------------------------------------------------------------------
+                    */
                     'status' => 'available',
                     'sale_id' => null,
                     'sale_item_id' => null,
                     'sold_at' => null,
+
                     'created_by' => Auth::id(),
-                    'outlet_id' => $stock->outlet_id ?? (Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id),
-                    'owner_id' => $stock->owner_id ?? (Auth::user()?->owner_id ?? Auth::id()),
+                    'outlet_id' => $stock->outlet_id,
+                    'owner_id' => $stock->owner_id,
                 ]);
 
                 continue;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | New product OR Used external product
+            |--------------------------------------------------------------------------
+            | Same as your previous working purchase code:
+            | create fresh identifier row with status available.
+            |--------------------------------------------------------------------------
+            */
             StockIdentifier::create([
                 'stock_id' => $stock->id,
                 'purchase_item_id' => $purchaseItem->id,
@@ -1743,8 +1782,8 @@ class PurchaseController extends Controller
                 'identifier_value' => $identifierValue,
                 'status' => 'available',
                 'created_by' => Auth::id(),
-                'outlet_id' => $stock->outlet_id ?? (Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id),
-                'owner_id' => $stock->owner_id ?? (Auth::user()?->owner_id ?? Auth::id()),
+                'outlet_id' => $stock->outlet_id,
+                'owner_id' => $stock->owner_id,
             ]);
         }
     }

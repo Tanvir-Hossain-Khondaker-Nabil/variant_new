@@ -405,18 +405,24 @@ class SalesController extends Controller
         if (empty($request->items) && empty($request->pickup_items)) {
             throw new \Exception('At least one item (stock or pickup) is required.');
         }
-
         if ($request->items && is_array($request->items) && count($request->items) > 0) {
             $rules['items.*.product_id'] = 'required|exists:products,id';
             $rules['items.*.variant_id'] = 'required|exists:variants,id';
             $rules['items.*.quantity'] = 'required|integer|min:1';
 
-            // optional fields coming from frontend
             $rules['items.*.unit'] = 'nullable|string|max:50';
             $rules['items.*.unit_quantity'] = 'nullable|numeric|min:0.0001';
             $rules['items.*.unit_price'] = 'nullable|numeric|min:0';
             $rules['items.*.shadow_sell_price'] = 'nullable|numeric|min:0';
             $rules['items.*.stock_id'] = 'nullable|integer';
+
+            /*
+            |--------------------------------------------------------------------------
+            | IMEI / Serial selected from frontend
+            |--------------------------------------------------------------------------
+            */
+            $rules['items.*.identifier_ids'] = 'nullable|array';
+            $rules['items.*.identifier_ids.*'] = 'nullable|integer|exists:stock_identifiers,id';
         }
 
         if ($request->pickup_items && is_array($request->pickup_items) && count($request->pickup_items) > 0) {
@@ -630,14 +636,24 @@ class SalesController extends Controller
                     if (!$product || !$variant) {
                         throw new \Exception('Product or Variant not found for inventory item.');
                     }
-
                     $identifierIds = array_values(array_filter($item['identifier_ids'] ?? []));
 
                     $unit = $item['unit'] ?? ($product->min_sale_unit ?? $product->default_unit ?? 'piece');
                     $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 1);
 
-                    $isTrackedProduct = !empty($product->is_tracking_enabled)
-                        && in_array($product->tracking_type, ['imei', 'serial']);
+                    /*
+                    |--------------------------------------------------------------------------
+                    | IMPORTANT FIX
+                    |--------------------------------------------------------------------------
+                    | Before: only product.is_tracking_enabled controlled IMEI/Serial sale.
+                    | Now: purchase can create stock_identifiers even if product tracking flag is false.
+                    | So if identifier_ids are selected, this item must be treated as tracked.
+                    |--------------------------------------------------------------------------
+                    */
+                    $isTrackedProduct = (
+                        (!empty($product->is_tracking_enabled) && in_array($product->tracking_type, ['imei', 'serial']))
+                        || count($identifierIds) > 0
+                    );
 
                     if ($isTrackedProduct) {
                         if ($unit !== 'piece') {
@@ -1132,20 +1148,24 @@ class SalesController extends Controller
         ])->findOrFail($sale->id);
 
         $sale->items->transform(function ($item) {
-            $item->identifiers = collect();
-
-            if ($item->stock_id) {
-                $item->identifiers = \App\Models\StockIdentifier::where('stock_id', $item->stock_id)
-                    ->where('sale_item_id', $item->id)
-                    ->where('status', 'sold')
-                    ->get([
-                        'id',
-                        'identifier_type',
-                        'identifier_value',
-                        'status',
-                        'sold_at',
-                    ]);
-            }
+            /*
+            |--------------------------------------------------------------------------
+            | IMEI / Serial for invoice
+            |--------------------------------------------------------------------------
+            | The historical relation is sale_item_id.
+            | Do not depend on current stock_id/status for invoice display.
+            |--------------------------------------------------------------------------
+            */
+            $item->identifiers = StockIdentifier::where('sale_item_id', $item->id)
+                ->get([
+                    'id',
+                    'identifier_type',
+                    'identifier_value',
+                    'status',
+                    'sold_at',
+                    'sale_id',
+                    'sale_item_id',
+                ]);
 
             return $item;
         });

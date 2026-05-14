@@ -255,17 +255,15 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         ->middleware('permission:return.delete')
         ->name('salesReturn.destroy');
 
-Route::controller(BusinessSettingController::class)
-    ->prefix('business-settings')
-    ->group(function () {
-        Route::get('/', 'edit')
-            ->middleware('permission:business_settings.view')
-            ->name('business-settings.edit');
+    Route::controller(BusinessSettingController::class)
+        ->prefix('business-settings')
+        ->group(function () {
+            Route::get('/', 'edit')
+                ->name('business-settings.edit');
 
-        Route::put('/', 'update')
-            ->middleware('permission:business_settings.edit')
-            ->name('business-settings.update');
-    });
+            Route::put('/', 'update')
+                ->name('business-settings.update');
+        });
 
 
     // account route will be here
@@ -347,7 +345,7 @@ Route::controller(BusinessSettingController::class)
     });
 
     Route::get('/expense-reports/monthly-cost', [ExpenseReportController::class, 'monthlyCost'])
-    ->name('expense-reports.monthly-cost');
+        ->name('expense-reports.monthly-cost');
 
     // extra cash
     Route::controller(ExtraCashController::class)->group(function () {

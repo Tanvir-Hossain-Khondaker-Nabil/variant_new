@@ -554,7 +554,7 @@ export default function SaleShow({
                     }
 
                     .variant-business-info {
-                        font-size: 12px !important;
+                        font-size: 11px !important;
                         line-height: 1.05 !important;
                     }
 
@@ -598,7 +598,7 @@ export default function SaleShow({
                     }
 
                     .variant-summary-extra {
-                        font-size: 12px !important;
+                        font-size: 11px !important;
                         line-height: 1.1 !important;
                     }
 
@@ -620,7 +620,7 @@ export default function SaleShow({
                     }
 
                     .variant-warranty-text {
-                        font-size: 12px !important;
+                        font-size: 11px !important;
                         line-height: 1.08 !important;
                     }
 
@@ -642,7 +642,7 @@ export default function SaleShow({
 
                     .variant-confirm-text {
                         margin-top: 3mm !important;
-                        font-size: 12px !important;
+                        font-size: 11px !important;
                         line-height: 1.05 !important;
                     }
 
@@ -766,7 +766,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-business-info"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.05",
                                         }}
                                     >
@@ -983,7 +983,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1021,7 +1021,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1059,7 +1059,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                             fontWeight: "700",
                                         }}
@@ -1125,7 +1125,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1153,7 +1153,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1181,7 +1181,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1209,7 +1209,7 @@ export default function SaleShow({
                                     <div
                                         className="variant-summary-extra flex items-center justify-end"
                                         style={{
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.1",
                                         }}
                                     >
@@ -1245,7 +1245,7 @@ export default function SaleShow({
                                 <div
                                     className="variant-warranty-text"
                                     style={{
-                                        fontSize: "12px",
+                                        fontSize: "11px",
                                         lineHeight: "1.08",
                                     }}
                                 >
@@ -1341,7 +1341,7 @@ export default function SaleShow({
                                             marginTop: "3mm",
                                             textAlign: "center",
                                             fontWeight: "700",
-                                            fontSize: "12px",
+                                            fontSize: "11px",
                                             lineHeight: "1.05",
                                         }}
                                     >

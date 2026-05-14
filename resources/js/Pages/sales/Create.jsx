@@ -521,14 +521,32 @@ export default function AddSale({
         const itemKey = `${product.id}-${variant.id}-${batch.batch_no || "default"}`;
         const existingItem = selectedItems.find((item) => item.uniqueKey === itemKey);
 
-        const isTrackedProduct =
-            !!product.is_tracking_enabled &&
-            (product.tracking_type === "imei" || product.tracking_type === "serial");
-
         const batchIdentifiers = Array.isArray(batch.identifiers) ? batch.identifiers : [];
+
         const availableIdentifiers = batchIdentifiers.filter(
             (x) => String(x?.status || "").toLowerCase() === "available"
         );
+
+        /*
+        |--------------------------------------------------------------------------
+        | IMPORTANT FIX
+        |--------------------------------------------------------------------------
+        | Before: tracking depended only on product.is_tracking_enabled.
+        | Now: IMEI/Serial comes from purchase stock identifiers.
+        | So if current batch has available identifiers, treat it as tracked.
+        |--------------------------------------------------------------------------
+        */
+        const isTrackedProduct =
+            (
+                !!product.is_tracking_enabled &&
+                (product.tracking_type === "imei" || product.tracking_type === "serial")
+            ) ||
+            availableIdentifiers.length > 0;
+
+        const trackingType =
+            product.tracking_type ||
+            availableIdentifiers?.[0]?.identifier_type ||
+            "imei";
 
         if (existingItem) {
             const newQuantity = (existingItem.unit_quantity || 1) + 1;
@@ -613,7 +631,7 @@ export default function AddSale({
                 base_price_per_base_unit: basePricePerBaseUnit,
 
                 is_tracking_enabled: isTrackedProduct,
-                tracking_type: product.tracking_type || null,
+                tracking_type: trackingType,
                 available_identifiers: availableIdentifiers,
             };
 
@@ -1363,22 +1381,34 @@ export default function AddSale({
             advanceAdjustment = Math.min(paidWithAdvance, maxAdjustable);
         }
 
-        const formattedItems = selectedItems.map((item) => ({
-            product_id: item.product_id,
-            variant_id: item.variant_id,
-            stock_id: item.stockId,
-            batch_no: item.batch_no,
-            quantity: item.quantity,
-            unit_quantity: item.unit_quantity || item.quantity,
-            unit: item.unit || "piece",
-            unit_price: item.unit_price,
-            total_price: item.total_price,
-            identifier_ids: item.is_tracking_enabled
-                ? (getSelectedIdentifierValues(item.uniqueKey) || [])
-                    .filter((value) => value !== "" && value !== null && value !== undefined)
-                    .map((value) => Number(value))
-                : [],
-        }));
+        const formattedItems = selectedItems.map((item) => {
+            const identifierIds = (getSelectedIdentifierValues(item.uniqueKey) || [])
+                .filter((value) => value !== "" && value !== null && value !== undefined)
+                .map((value) => Number(value))
+                .filter(Boolean);
+
+            return {
+                product_id: item.product_id,
+                variant_id: item.variant_id,
+                stock_id: item.stockId,
+                batch_no: item.batch_no,
+                quantity: item.quantity,
+                unit_quantity: item.unit_quantity || item.quantity,
+                unit: item.unit || "piece",
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+
+                /*
+                |--------------------------------------------------------------------------
+                | IMPORTANT FIX
+                |--------------------------------------------------------------------------
+                | Always send selected identifier ids.
+                | Do not depend only on item.is_tracking_enabled.
+                |--------------------------------------------------------------------------
+                */
+                identifier_ids: identifierIds,
+            };
+        });
 
         const formattedPickupItems = pickupItems.map((item) => ({
             pickup_product_id: item.pickup_product_id,

@@ -268,6 +268,15 @@ export default function AddSale({
 
             const availableUnitsForStock = getAvailableUnitsForStock(map.get(pid), s);
 
+            const availableIdentifiers = (s.identifiers || []).filter(
+                (identifier) => String(identifier.status || "").toLowerCase() === "available"
+            );
+
+            const trackingType =
+                p.tracking_type ||
+                availableIdentifiers?.[0]?.identifier_type ||
+                "imei";
+
             item.variants.push({
                 stock_id: s.id,
                 batch_no: s.batch_no || null,
@@ -284,13 +293,24 @@ export default function AddSale({
                 is_fraction_allowed: item.is_fraction_allowed || false,
                 sku: s.variant?.sku || null,
                 identifiers: s.identifiers || [],
+
+                /*
+                |--------------------------------------------------------------------------
+                | IMPORTANT FIX
+                |--------------------------------------------------------------------------
+                | POS tracking should work even if product.is_tracking_enabled is false,
+                | because IMEI/Serial now comes from purchase stock identifiers.
+                |--------------------------------------------------------------------------
+                */
                 is_tracking_enabled:
-                    !!p.is_tracking_enabled &&
-                    (p.tracking_type === "imei" || p.tracking_type === "serial"),
-                tracking_type: p.tracking_type || null,
-                available_identifiers: (s.identifiers || []).filter(
-                    (identifier) => String(identifier.status || "").toLowerCase() === "available"
-                ),
+                    (
+                        !!p.is_tracking_enabled &&
+                        (p.tracking_type === "imei" || p.tracking_type === "serial")
+                    ) ||
+                    availableIdentifiers.length > 0,
+
+                tracking_type: trackingType,
+                available_identifiers: availableIdentifiers,
             });
         }
 
@@ -387,13 +407,28 @@ export default function AddSale({
             const key = `${product.id}-${variant.variant_id || "0"}-${variant.stock_id}`;
             const existingItem = cart.find((x) => x.key === key);
 
-            const isTrackedProduct =
-                !!variant.is_tracking_enabled &&
-                (variant.tracking_type === "imei" || variant.tracking_type === "serial");
-
             const availableIdentifiers = Array.isArray(variant.available_identifiers)
                 ? variant.available_identifiers
                 : [];
+
+            /*
+            |--------------------------------------------------------------------------
+            | IMPORTANT FIX
+            |--------------------------------------------------------------------------
+            | If this stock/batch has available identifiers, POS must treat it as tracked.
+            |--------------------------------------------------------------------------
+            */
+            const isTrackedProduct =
+                (
+                    !!variant.is_tracking_enabled &&
+                    (variant.tracking_type === "imei" || variant.tracking_type === "serial")
+                ) ||
+                availableIdentifiers.length > 0;
+
+            const trackingType =
+                variant.tracking_type ||
+                availableIdentifiers?.[0]?.identifier_type ||
+                "imei";
 
             if (existingItem) {
                 const nextQty = n(existingItem.qty) + 1;
@@ -463,7 +498,7 @@ export default function AddSale({
                 base_price_per_base_unit: basePricePerBaseUnit,
 
                 is_tracking_enabled: isTrackedProduct,
-                tracking_type: variant.tracking_type || null,
+                tracking_type: trackingType,
                 available_identifiers: availableIdentifiers,
             };
 
@@ -536,13 +571,16 @@ export default function AddSale({
 
     const changeQty = (key, nextQty) => {
         const item = cart.find((x) => x.key === key);
-        if (item.is_tracking_enabled && newUnit !== "piece") {
-            alert("Tracked product must be sold in piece unit");
-            return;
-        }
+
         if (!item) return;
 
         const selectedUnit = selectedUnits[key] || item.unit;
+
+        if (item.is_tracking_enabled && selectedUnit !== "piece") {
+            alert("Tracked product must be sold in piece unit");
+            return;
+        }
+
         let q = n(nextQty);
 
         if (!item.is_fraction_allowed && q % 1 !== 0) {
@@ -912,11 +950,10 @@ export default function AddSale({
             unit_price: n(i.unit_price),
             total_price: n(i.total_price),
             shadow_sell_price: n(i.shadow_unit_price),
-            identifier_ids: i.is_tracking_enabled
-                ? (getSelectedIdentifierValues(i.key) || [])
-                    .filter((value) => value !== "" && value !== null && value !== undefined)
-                    .map((value) => Number(value))
-                : [],
+            identifier_ids: (getSelectedIdentifierValues(i.key) || [])
+                .filter((value) => value !== "" && value !== null && value !== undefined)
+                .map((value) => Number(value))
+                .filter(Boolean),
         }));
 
         const formattedPickupItems = pickupItems.map((item) => ({
