@@ -104,6 +104,56 @@ export default function Attendance({ attendances, filters, employees }) {
         }
     };
 
+    const handleResumeShift = async (employeeId) => {
+
+        if (!confirm('Are you sure you want to resume this shift?')) {
+            return;
+        }
+
+        if (checkingStates[`resume-${employeeId}`]) return;
+
+        setCheckingStates(prev => ({
+            ...prev,
+            [`resume-${employeeId}`]: true
+        }));
+
+        try {
+
+            const response = await axios.post(
+                route('attendance.resume-shift'),
+                {
+                    employee_id: employeeId,
+                }
+            );
+
+            if (response.data.success) {
+
+                reloadAttendance();
+
+            } else {
+
+                alert(response.data.message || 'Resume shift failed');
+            }
+
+        } catch (error) {
+
+            console.error('Resume shift error:', error);
+
+            alert(
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                'Resume shift failed'
+            );
+
+        } finally {
+
+            setCheckingStates(prev => ({
+                ...prev,
+                [`resume-${employeeId}`]: false
+            }));
+        }
+    };
+
     const Icons = {
         Calendar: () => (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,6 +216,17 @@ export default function Attendance({ attendances, filters, employees }) {
     const getStatusValue = (attendance) => {
         return attendance?.attendance_status || attendance?.status || 'not_checked';
     };
+    const getDisplayStatus = (attendance) => {
+    if (!attendance) {
+        return 'not_checked';
+    }
+
+    if (attendance.check_out) {
+        return 'completed';
+    }
+
+    return attendance.attendance_status || attendance.status || 'not_checked';
+};
 
     const getCheckInValue = (attendance) => {
         return attendance?.formatted_check_in || attendance?.check_in_time || attendance?.check_in || '-';
@@ -175,6 +236,88 @@ export default function Attendance({ attendances, filters, employees }) {
         return attendance?.formatted_check_out || attendance?.check_out || '-';
     };
 
+    const calculateWorkedDuration = (attendance) => {
+
+        if (!attendance?.check_in || !attendance?.check_out) {
+            return null;
+        }
+
+        const parseTime = (timeString) => {
+
+            if (!timeString) return null;
+
+            const cleanTime = timeString.split(' ')[0];
+
+            const parts = cleanTime.split(':').map(Number);
+
+            return {
+                hour: parts[0] || 0,
+                minute: parts[1] || 0,
+            };
+        };
+
+        const checkIn = parseTime(attendance.check_in);
+
+        const checkOut = parseTime(attendance.check_out);
+
+        if (!checkIn || !checkOut) {
+            return null;
+        }
+
+        const inMinutes =
+            (checkIn.hour * 60) + checkIn.minute;
+
+        const outMinutes =
+            (checkOut.hour * 60) + checkOut.minute;
+
+        if (outMinutes < inMinutes) {
+            return null;
+        }
+
+        const totalMinutes = outMinutes - inMinutes;
+
+        const hours = Math.floor(totalMinutes / 60);
+
+        const minutes = totalMinutes % 60;
+
+        return `${hours}h ${minutes}m`;
+    };
+
+    const isEarlyOutShift = (attendance) => {
+
+        if (!attendance?.check_out) {
+            return false;
+        }
+
+        if (!attendance?.office_end_time) {
+            return false;
+        }
+
+        const parseTime = (timeString) => {
+
+            const cleanTime = timeString.split(' ')[0];
+
+            const parts = cleanTime.split(':').map(Number);
+
+            return {
+                hour: parts[0] || 0,
+                minute: parts[1] || 0,
+            };
+        };
+
+        const checkOut = parseTime(attendance.check_out);
+
+        const officeEnd = parseTime(attendance.office_end_time);
+
+        const outMinutes =
+            (checkOut.hour * 60) + checkOut.minute;
+
+        const officeMinutes =
+            (officeEnd.hour * 60) + officeEnd.minute;
+
+        return outMinutes < officeMinutes;
+    };
+
     const getStatusColor = (status) => {
         const colors = {
             present: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -182,17 +325,39 @@ export default function Attendance({ attendances, filters, employees }) {
             late: 'bg-amber-50 text-amber-700 border-amber-200',
             half_day: 'bg-blue-50 text-blue-700 border-blue-200',
             not_checked: 'bg-gray-50 text-gray-500 border-gray-200',
+            completed: 'bg-slate-100 text-slate-700 border-slate-300',
         };
 
         return colors[status] || 'bg-gray-50 text-gray-700 border-gray-200';
     };
 
-    const attendanceData = attendances?.data || attendances || [];
-    const todayDate = new Date().toISOString().split('T')[0];
+    // const attendanceData = attendances?.data || attendances || [];
+    // const todayDate = new Date().toISOString().split('T')[0];
 
-    const todayAttendances = Array.isArray(attendanceData)
-        ? attendanceData.filter(att => att.date === todayDate || att.date === todayDate.split('T')[0])
-        : [];
+    // const todayAttendances = Array.isArray(attendanceData)
+    //     ? attendanceData.filter(att => att.date === todayDate || att.date === todayDate.split('T')[0])
+    //     : [];
+    const attendanceData = attendances?.data || attendances || [];
+
+const selectedDate =
+    filters.date ||
+    data.date ||
+    new Date().toISOString().split('T')[0];
+
+const normalizeDate = (value) => {
+    if (!value) return '';
+
+    if (typeof value === 'string') {
+        return value.split('T')[0];
+    }
+
+    return value;
+};
+
+const todayAttendances = Array.isArray(attendanceData)
+    ? attendanceData.filter(att => normalizeDate(att.date) === normalizeDate(selectedDate))
+    : [];
+
 
     const employeeStatus = {};
 
@@ -204,7 +369,7 @@ export default function Attendance({ attendances, filters, employees }) {
         employeeStatus[employee.id] = {
             checkedIn: !!attendance,
             checkedOut: !!attendance?.check_out,
-            status: getStatusValue(attendance),
+            status: getDisplayStatus(attendance),
             lateMinutes: attendance?.late_minutes || 0,
             lateFee: attendance?.late_fee || 0,
             attendance,
@@ -336,20 +501,28 @@ export default function Attendance({ attendances, filters, employees }) {
                             const isCheckingOut = checkingStates[`checkout-${employee.id}`];
                             const isEarlyOut = checkingStates[`earlyout-${employee.id}`];
 
+                            const isResuming =
+                                checkingStates[`resume-${employee.id}`];
+
+                            const workedDuration =
+                                calculateWorkedDuration(status.attendance);
+
+                            const earlyOutShift =
+                                isEarlyOutShift(status.attendance);
+
                             return (
                                 <div
                                     key={employee.id}
                                     className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition overflow-hidden"
                                 >
-                                    <div className={`h-1.5 ${
-                                        status.checkedIn
+                                    <div className={`h-1.5 ${status.checkedIn
                                             ? status.checkedOut
                                                 ? 'bg-slate-300'
                                                 : status.status === 'late'
                                                     ? 'bg-amber-500'
                                                     : 'bg-emerald-500'
                                             : 'bg-red-500'
-                                    }`} />
+                                        }`} />
 
                                     <div className="p-5">
                                         <div className="flex justify-between gap-3 mb-4">
@@ -398,8 +571,24 @@ export default function Attendance({ attendances, filters, employees }) {
                                                     </button>
                                                 </>
                                             ) : (
-                                                <div className="text-center py-3 text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 rounded-2xl border border-emerald-200">
-                                                    Shift Logged
+                                                <div className="space-y-2">
+
+                                                    <div className="text-center py-3 text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 rounded-2xl border border-emerald-200">
+                                                        Shift Logged
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => handleResumeShift(employee.id)}
+                                                        disabled={isResuming}
+                                                        className="w-full bg-slate-100 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-200 disabled:opacity-50 transition flex items-center justify-center gap-2"
+                                                    >
+                                                        {isResuming
+                                                            ? <Icons.Loading />
+                                                            : <Icons.Clock />
+                                                        }
+
+                                                        Resume Shift
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>
@@ -413,6 +602,30 @@ export default function Attendance({ attendances, filters, employees }) {
                                                             {getCheckInValue(status.attendance)}
                                                         </span>
                                                     </div>
+
+                                                    {workedDuration && (
+
+                                                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+
+                                                            <div className="flex justify-between text-[10px] font-black uppercase">
+
+                                                                <span className="text-slate-500">
+                                                                    Worked Time
+                                                                </span>
+
+                                                                <span className="text-slate-900">
+                                                                    {workedDuration}
+                                                                </span>
+                                                            </div>
+
+                                                            {earlyOutShift && (
+
+                                                                <div className="mt-2 text-[10px] font-black uppercase text-orange-600">
+                                                                    Early Out
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
 
                                                     <div className="text-right">
                                                         <span className="block mb-1">Departure</span>
@@ -464,6 +677,7 @@ export default function Attendance({ attendances, filters, employees }) {
                                 <TableHead>Date</TableHead>
                                 <TableHead>Arrival</TableHead>
                                 <TableHead>Departure</TableHead>
+                                <TableHead>Worked</TableHead>
                                 <TableHead>Late Info</TableHead>
                                 <TableHead align="right">Status</TableHead>
                             </tr>
@@ -472,7 +686,8 @@ export default function Attendance({ attendances, filters, employees }) {
                         <tbody className="bg-white divide-y divide-slate-100">
                             {attendanceData.length > 0 ? (
                                 attendanceData.map((attendance) => {
-                                    const rowStatus = getStatusValue(attendance);
+                                    // const rowStatus = getStatusValue(attendance);
+                                    const rowStatus = getDisplayStatus(attendance);
 
                                     return (
                                         <tr key={attendance.id} className="hover:bg-slate-50 transition">
@@ -503,6 +718,18 @@ export default function Attendance({ attendances, filters, employees }) {
 
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-black text-slate-900">
                                                 {getCheckOutValue(attendance)}
+                                            </td>
+
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-black text-slate-900">
+
+                                                {calculateWorkedDuration(attendance) || '-'}
+
+                                                {isEarlyOutShift(attendance) && (
+
+                                                    <div className="text-[10px] text-orange-600 font-black uppercase mt-1">
+                                                        Early Out
+                                                    </div>
+                                                )}
                                             </td>
 
                                             <td className="px-6 py-4 whitespace-nowrap">
@@ -542,7 +769,7 @@ export default function Attendance({ attendances, filters, employees }) {
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-20 text-center">
+                                    <td colSpan="7" className="px-6 py-20 text-center">
                                         <EmptyState text="No attendance records found." compact />
                                     </td>
                                 </tr>
@@ -563,11 +790,10 @@ export default function Attendance({ attendances, filters, employees }) {
                                     key={index}
                                     onClick={() => link.url && get(link.url, { preserveState: true, preserveScroll: true })}
                                     disabled={!link.url || link.active}
-                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition ${
-                                        link.active
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition ${link.active
                                             ? 'bg-red-600 text-white shadow-sm'
                                             : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-900'
-                                    } ${!link.url ? 'opacity-30 grayscale' : ''}`}
+                                        } ${!link.url ? 'opacity-30 grayscale' : ''}`}
                                     dangerouslySetInnerHTML={{ __html: link.label }}
                                 />
                             ))}

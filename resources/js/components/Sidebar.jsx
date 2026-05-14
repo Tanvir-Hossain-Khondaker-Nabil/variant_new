@@ -196,6 +196,14 @@ const outletLoggedInMenu = [
   { title: "Employees", icon: "users", route: "employees.index", active: "employees.index", category: "HR", permission: "employees.view" },
   { title: "Attendance", icon: "calendar", route: "attendance.index", active: "attendance.index", category: "HR", permission: "attendance.view" },
   { title: "Salary", icon: "credit-card", route: "salary.index", active: "salary.index", category: "HR", permission: "salary.view" },
+  { 
+  title: "Salary Advance",
+  icon: "wallet-minimal",
+  route: "employee-salary-advances.index",
+  active: "employee-salary-advances.index",
+  category: "HR",
+  permission: "salary.view"
+},
   { title: "Allowances", icon: "trending-up", route: "allowances.index", active: "allowances.index", category: "HR", permission: "allowances.view" },
   { title: "Ranks", icon: "star", route: "ranks.index", active: "ranks.index", category: "HR", permission: "ranks.view" },
   { title: "Bonus", icon: "gift", route: "bonus.index", active: "bonus.index", category: "HR", permission: "bonus.view" },

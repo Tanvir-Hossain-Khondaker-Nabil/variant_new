@@ -36,6 +36,7 @@ class Attendance extends Model
         'date' => 'date:Y-m-d',
         'late_hours' => 'decimal:2',
         'overtime_hours' => 'decimal:2',
+        'late_fee' => 'decimal:2',
     ];
 
     protected $appends = [

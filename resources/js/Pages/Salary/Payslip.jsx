@@ -68,14 +68,15 @@ export default function Payslip({ salary, business }) {
         { label: 'Overtime', amount: salary.overtime_amount || 0 },
     ];
 
-    const deductions = [
-        { label: 'Late Deduction', amount: salary.late_deduction || 0 },
-        { label: 'Absent Deduction', amount: salary.absent_deduction || 0 },
-        { label: 'Tax Deduction', amount: salary.tax_deduction || 0 },
-        { label: 'Provident Fund', amount: salary.provident_fund || 0 },
-        { label: 'Other Deductions', amount: salary.other_deductions || 0 },
-        { label: 'Total Deductions', amount: salary.total_deductions || 0 },
-    ];
+   const deductions = [
+    { label: 'Late Deduction', amount: salary.late_deduction || 0 },
+    { label: 'Salary Advance', amount: salary.advance_deduction || 0 },
+    { label: 'Absent Deduction', amount: salary.absent_deduction || 0 },
+    { label: 'Tax Deduction', amount: salary.tax_deduction || 0 },
+    { label: 'Provident Fund', amount: salary.provident_fund || 0 },
+    { label: 'Other Deductions', amount: salary.other_deductions || 0 },
+    { label: 'Total Deductions', amount: salary.total_deductions || 0 },
+];
 
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-BD', {
@@ -254,12 +255,12 @@ export default function Payslip({ salary, business }) {
                                 <div>
                                     <p className="text-[10px] font-black text-red-500 uppercase tracking-[0.4em] mb-2">Net Disbursement</p>
                                     <p className="text-5xl font-black font-mono tracking-tighter">
-                                        {formatCurrency(salary.net_salary || 0)}
+                                        {formatCurrency(salary.final_salary || salary.net_salary || 0)}
                                     </p>
                                     <div className="flex items-center gap-2 mt-6">
                                         <CheckCircle2 size={16} className="text-green-400"/>
                                         <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-                                            Amount in Words: {convertToWords(salary.net_salary || 0)} Taka Only
+                                            Amount in Words: {convertToWords(salary.final_salary || salary.net_salary || 0)} Taka Only
                                         </p>
                                     </div>
                                 </div>
@@ -273,6 +274,19 @@ export default function Payslip({ salary, business }) {
                                         <span>System Deductions</span>
                                         <span className="text-red-400">-{formatCurrency(salary.total_deductions || 0)}</span>
                                     </div>
+                                    {Number(salary.advance_deduction || 0) > 0 && (
+    <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-red-300">
+        <span>Salary Advance</span>
+        <span>-{formatCurrency(salary.advance_deduction || 0)}</span>
+    </div>
+)}
+
+{Number(salary.late_fee_deduction || 0) > 0 && (
+    <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-red-300">
+        <span>Late Fee</span>
+        <span>-{formatCurrency(salary.late_fee_deduction || 0)}</span>
+    </div>
+)}
                                     <div className="h-px bg-white/20"></div>
                                     <div className="flex items-center gap-2 text-xs font-black uppercase text-green-400">
                                         <ShieldCheck size={14}/> Verified Ledger Entry

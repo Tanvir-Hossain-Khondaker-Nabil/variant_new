@@ -44,6 +44,42 @@ export default function MonthlyCost({
 
             <div className="p-6 space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div>
+        <h1 className="text-2xl font-black text-gray-800">
+            Monthly Cost Report
+        </h1>
+
+        <p className="text-sm text-gray-500 font-semibold">
+            Daily, monthly, category wise and petty cash cost summary
+        </p>
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+        <a
+            href={route("expense-reports.monthly-cost.pdf", filters)}
+            target="_blank"
+            className="btn bg-red-600 hover:bg-red-700 text-white rounded-xl border-none"
+        >
+            Export PDF
+        </a>
+
+        <a
+            href={route("expense-reports.monthly-cost.excel", filters)}
+            className="btn bg-green-600 hover:bg-green-700 text-white rounded-xl border-none"
+        >
+            Export Excel
+        </a>
+
+        <Link
+            href={route("expenses.list")}
+            className="btn btn-outline rounded-xl"
+        >
+            <ArrowLeft size={16} />
+            Back to Expenses
+        </Link>
+    </div>
+</div>
+                {/* <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-black text-gray-800">
                             Monthly Cost Report
@@ -60,7 +96,7 @@ export default function MonthlyCost({
                         <ArrowLeft size={16} />
                         Back to Expenses
                     </Link>
-                </div>
+                </div> */}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
                     <div>

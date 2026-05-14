@@ -18,6 +18,7 @@ use App\Http\Controllers\DamageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeSalaryAdvanceController;
 use App\Http\Controllers\ExchangeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ExpenseReportController;
@@ -349,6 +350,12 @@ Route::controller(BusinessSettingController::class)
     Route::get('/expense-reports/monthly-cost', [ExpenseReportController::class, 'monthlyCost'])
     ->name('expense-reports.monthly-cost');
 
+    Route::get('/expense-reports/monthly-cost/pdf', [ExpenseReportController::class, 'monthlyCostPdf'])
+    ->name('expense-reports.monthly-cost.pdf');
+
+Route::get('/expense-reports/monthly-cost/excel', [ExpenseReportController::class, 'monthlyCostExcel'])
+    ->name('expense-reports.monthly-cost.excel');
+
     // extra cash
     Route::controller(ExtraCashController::class)->group(function () {
         Route::get('/extra-cash', 'index')->middleware('permission:extra_cash.view')->name('extra.cash.all');
@@ -612,6 +619,7 @@ Route::controller(BusinessSettingController::class)
         Route::get('/', [AttendanceController::class, 'index'])->middleware('permission:attendance.view')->name('attendance.index');
         Route::post('/check-in', [AttendanceController::class, 'checkIn'])->middleware('permission:attendance.checkin')->name('attendance.checkin');
         Route::post('/check-out', [AttendanceController::class, 'checkOut'])->middleware('permission:attendance.checkout')->name('attendance.checkout');
+        Route::post('/resume-shift', [AttendanceController::class, 'resumeShift'])->middleware('permission:attendance.checkin')->name('attendance.resume-shift');
         Route::post('/manual-entry', [AttendanceController::class, 'manualEntry'])->middleware('permission:attendance.manual_entry')->name('attendance.manual-entry');
         Route::get('/monthly-report', [AttendanceController::class, 'monthlyReport'])->middleware('permission:attendance.monthly_report')->name('attendance.monthly-report');
         Route::get('/top-performers', [AttendanceController::class, 'topPerformers'])->middleware('permission:attendance.top_performers')->name('attendance.top-performers');
@@ -625,6 +633,12 @@ Route::controller(BusinessSettingController::class)
         Route::get('/test-create', [SalaryController::class, 'testCreateForm'])->middleware('permission:salary.test_form')->name('salary.test-form');
         Route::post('/test-create', [SalaryController::class, 'calculateTestSalary'])->middleware('permission:salary.test_create')->name('salary.test-create');
     });
+
+    Route::get('/employee-salary-advances', [EmployeeSalaryAdvanceController::class, 'index'])
+    ->name('employee-salary-advances.index');
+
+Route::post('/employee-salary-advances', [EmployeeSalaryAdvanceController::class, 'store'])
+    ->name('employee-salary-advances.store');
 
     // Salary Routes
     Route::prefix('salary')->name('salary.')->group(function () {

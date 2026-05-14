@@ -16,11 +16,13 @@ use App\Models\Attendance;
 use Illuminate\Http\Request;
 use App\Models\AllowanceSetting;
 use App\Models\BonusSetting;
+use App\Models\BusinessSetting;
 use App\Models\EmployeeAward;
+use App\Models\EmployeeSalaryAdvance;
 use App\Models\ProvidentFund;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB ;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SalaryController extends Controller
@@ -113,7 +115,6 @@ class SalaryController extends Controller
                 'year' => $year,
                 'employee_id' => $employeeId
             ])->with('success', $message);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Salary calculation failed: ' . $e->getMessage());
@@ -133,6 +134,7 @@ class SalaryController extends Controller
         // Get month start and end dates
         $startDate = Carbon::create($year, $month, 1)->startOfMonth();
         $endDate = Carbon::create($year, $month, 1)->endOfMonth();
+        $settings = BusinessSetting::current();
 
         // ✅ Get attendance data for the month
         $attendances = Attendance::where('employee_id', $employee->id)
@@ -140,10 +142,26 @@ class SalaryController extends Controller
             ->get();
 
         // ✅ Calculate present, late, and absent days
-        $presentDays = $attendances->whereIn('status', ['present', 'late'])->count();
-        $lateDays = $attendances->where('status', 'late')->count();
-        $absentDays = $attendances->where('status', 'absent')->count();
+        $presentDays = $attendances
+            ->filter(function ($attendance) {
+                $status = $attendance->attendance_status ?? $attendance->status;
+                return in_array($status, ['present', 'late']);
+            })
+            ->count();
 
+        $lateDays = $attendances
+            ->filter(function ($attendance) {
+                $status = $attendance->attendance_status ?? $attendance->status;
+                return $status === 'late';
+            })
+            ->count();
+
+        $absentDays = $attendances
+            ->filter(function ($attendance) {
+                $status = $attendance->attendance_status ?? $attendance->status;
+                return $status === 'absent';
+            })
+            ->count();
         // ✅ Calculate total working days (excluding Fridays only)
         $totalWorkingDays = $this->getTotalWorkingDays($month, $year);
 
@@ -221,9 +239,26 @@ class SalaryController extends Controller
         ]);
 
         // ✅ Calculate deductions
-        $lateDeduction = $totalLateHours * 100; // 100 per hour
-        $overtimeAmount = $totalOvertimeHours * 100; // 100 per hour
 
+        $hourlyRate = $settings?->late_fee_amount ?? 0;
+
+        // Late deduction from settings
+        $lateDeduction = $totalLateHours * $hourlyRate;
+
+        // Overtime earning from settings
+        $overtimeAmount = $totalOvertimeHours * $hourlyRate;
+
+        $advanceDeduction = 0;
+
+        if (!$settings || $settings->salary_advance_adjustment) {
+            $advanceDeduction = EmployeeSalaryAdvance::where('employee_id', $employee->id)
+                ->whereMonth('date', $month)
+                ->whereYear('date', $year)
+                ->sum('amount');
+        }
+
+        // $lateFeeDeduction = $attendances->sum('late_fee');
+        $lateFeeDeduction = 0;
         // ✅ Calculate absent deduction
         $absentDeduction = 0;
         if ($totalAbsentDays > 0 && $totalWorkingDays > 0) {
@@ -258,9 +293,20 @@ class SalaryController extends Controller
         }
 
         // ✅ Calculate gross and net salary
+        // $grossSalary = $basicSalary + $totalAllowance + $totalBonus + $overtimeAmount;
+        // $totalDeductions = $lateDeduction + $absentDeduction + $providentFund;
+        // $netSalary = $grossSalary - $totalDeductions;
+        // ✅ Calculate gross and net salary
         $grossSalary = $basicSalary + $totalAllowance + $totalBonus + $overtimeAmount;
-        $totalDeductions = $lateDeduction + $absentDeduction + $providentFund;
-        $netSalary = $grossSalary - $totalDeductions;
+
+        $totalDeductions =
+            $lateDeduction +
+            $absentDeduction +
+            $providentFund +
+            $advanceDeduction;
+
+        $netSalary = max(0, $grossSalary - $totalDeductions);
+        $finalSalary = $netSalary;
 
         // ✅ Create or update salary record
         $existingSalary = Salary::where('employee_id', $employee->id)
@@ -300,6 +346,8 @@ class SalaryController extends Controller
 
         // Deductions
         $salary->late_deduction = $lateDeduction;
+        $salary->advance_deduction = $advanceDeduction;
+        $salary->late_fee_deduction = $lateFeeDeduction;
         $salary->absent_deduction = $absentDeduction;
         $salary->tax_deduction = 0;
         $salary->provident_fund = $providentFund;
@@ -317,6 +365,7 @@ class SalaryController extends Controller
         // Final amounts
         $salary->gross_salary = $grossSalary;
         $salary->net_salary = $netSalary;
+        $salary->final_salary = $finalSalary;
         $salary->status = $salary->status ?? 'pending';
 
         // Notes
@@ -325,6 +374,11 @@ class SalaryController extends Controller
             $notes[] = "Late: {$totalLateHours}h";
         if ($totalOvertimeHours > 0)
             $notes[] = "Overtime: {$totalOvertimeHours}h";
+        if ($advanceDeduction > 0)
+            $notes[] = "Advance Deduction: ৳" . number_format($advanceDeduction, 2);
+
+        // if ($lateFeeDeduction > 0)
+        //     $notes[] = "Late Fee Deduction: ৳" . number_format($lateFeeDeduction, 2);
         if ($paidLeaveDays > 0)
             $notes[] = "Leave: {$paidLeaveDays}d";
         if ($totalBonus > 0)
@@ -722,7 +776,6 @@ class SalaryController extends Controller
             ]);
         }
     }
-
     public function paySalary(Request $request, Salary $salary)
     {
         $request->validate([
@@ -734,8 +787,12 @@ class SalaryController extends Controller
         ]);
 
         DB::beginTransaction();
+
         try {
+            $payableSalary = $salary->final_salary ?: $salary->net_salary;
+
             $account = null;
+
             if ($request->account_id) {
                 $account = Account::find($request->account_id);
 
@@ -747,24 +804,21 @@ class SalaryController extends Controller
                     throw new \Exception('Selected account is not active');
                 }
 
-                // Check account balance
-                if ($account->current_balance < $salary->net_salary) {
-                    throw new \Exception("Insufficient balance in account: {$account->name}. Available: ৳{$account->current_balance}, Required: ৳{$salary->net_salary}");
+                if ($account->current_balance < $payableSalary) {
+                    throw new \Exception("Insufficient balance in account: {$account->name}. Available: ৳{$account->current_balance}, Required: ৳{$payableSalary}");
                 }
             }
 
-            // Update salary status only (no payment fields in salaries table)
             $salary->update([
                 'status' => 'paid',
-                // Remove payment_method, transaction_id, payment_date from here
-                // They will be stored in payments table
             ]);
 
-            // Create payment record in payments table
             $payment = Payment::create([
+                'reference_type' => 'salary_payment',
+                'reference_id' => $salary->id,
                 'salary_id' => $salary->id,
                 'employee_id' => $salary->employee_id,
-                'amount' => -$salary->net_salary, // এখানে negative করে দিন
+                'amount' => -$payableSalary,
                 'payment_method' => $request->payment_method,
                 'txn_ref' => $request->transaction_id ?? ('SAL-' . strtoupper(Str::random(10))),
                 'note' => $request->notes ?? 'Salary payment for ' . Carbon::create($salary->year, $salary->month, 1)->format('F Y'),
@@ -773,15 +827,13 @@ class SalaryController extends Controller
                 'created_by' => Auth::id()
             ]);
 
-            // Deduct from account if account is selected
             if ($account) {
-                // Use the existing updateBalance method from Account model
-                $account->updateBalance($salary->net_salary, 'withdraw', $payment);
+                $account->updateBalance($payableSalary, 'withdraw', $payment);
 
                 Log::info('Account balance updated after salary payment', [
                     'account_id' => $account->id,
                     'account_name' => $account->name,
-                    'amount' => $salary->net_salary,
+                    'amount' => $payableSalary,
                     'payment_id' => $payment->id,
                     'salary_id' => $salary->id
                 ]);
@@ -798,13 +850,98 @@ class SalaryController extends Controller
             ]);
 
             return redirect()->back()->with('success', 'Salary marked as paid successfully');
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             Log::error('Salary payment failed: ' . $e->getMessage());
+
             return redirect()->back()->with('error', 'Error paying salary: ' . $e->getMessage());
         }
     }
+
+    // public function paySalary(Request $request, Salary $salary)
+    // {
+    //     $request->validate([
+    //         'payment_method' => 'required|string|in:cash,bank,cheque,mobile_banking',
+    //         'transaction_id' => 'nullable|string',
+    //         'payment_date' => 'nullable|date',
+    //         'account_id' => 'required_if:payment_method,bank,mobile_banking|exists:accounts,id',
+    //         'notes' => 'nullable|string'
+    //     ]);
+
+    //     DB::beginTransaction();
+    //     try {
+    //         $account = null;
+    //         if ($request->account_id) {
+    //             $account = Account::find($request->account_id);
+
+    //             if (!$account) {
+    //                 throw new \Exception('Selected account not found');
+    //             }
+
+    //             if (!$account->is_active) {
+    //                 throw new \Exception('Selected account is not active');
+    //             }
+
+    //             // Check account balance
+    //             $payableSalary = $salary->final_salary ?: $salary->net_salary;
+
+    //             if ($account->current_balance < $payableSalary) {
+    //                 throw new \Exception("Insufficient balance in account: {$account->name}. Available: ৳{$account->current_balance}, Required: ৳{$payableSalary}");
+    //             }
+    //         }
+
+    //         // Update salary status only (no payment fields in salaries table)
+    //         $salary->update([
+    //             'status' => 'paid',
+    //             // Remove payment_method, transaction_id, payment_date from here
+    //             // They will be stored in payments table
+    //         ]);
+
+    //         // Create payment record in payments table
+    //         $payment = Payment::create([
+    //             'salary_id' => $salary->id,
+    //             'employee_id' => $salary->employee_id,
+    //             'amount' => -$payableSalary, // এখানে negative করে দিন
+    //             'payment_method' => $request->payment_method,
+    //             'txn_ref' => $request->transaction_id ?? ('SAL-' . strtoupper(Str::random(10))),
+    //             'note' => $request->notes ?? 'Salary payment for ' . Carbon::create($salary->year, $salary->month, 1)->format('F Y'),
+    //             'account_id' => $request->account_id,
+    //             'paid_at' => $request->payment_date ?? Carbon::now(),
+    //             'created_by' => Auth::id()
+    //         ]);
+
+    //         // Deduct from account if account is selected
+    //         if ($account) {
+    //             // Use the existing updateBalance method from Account model
+    //             $account->updateBalance($payableSalary, 'withdraw', $payment);
+
+    //             Log::info('Account balance updated after salary payment', [
+    //                 'account_id' => $account->id,
+    //                 'account_name' => $account->name,
+    //                 'amount' => $payableSalary,
+    //                 'payment_id' => $payment->id,
+    //                 'salary_id' => $salary->id
+    //             ]);
+    //         }
+
+    //         DB::commit();
+
+    //         Log::info('Salary marked as paid', [
+    //             'salary_id' => $salary->id,
+    //             'employee_id' => $salary->employee_id,
+    //             'payment_method' => $request->payment_method,
+    //             'payment_id' => $payment->id,
+    //             'account_id' => $request->account_id
+    //         ]);
+
+    //         return redirect()->back()->with('success', 'Salary marked as paid successfully');
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         Log::error('Salary payment failed: ' . $e->getMessage());
+    //         return redirect()->back()->with('error', 'Error paying salary: ' . $e->getMessage());
+    //     }
+    // }
 
     public function payslip($id)
     {
@@ -832,6 +969,8 @@ class SalaryController extends Controller
             ],
             'deductions' => [
                 'Late Deduction' => $salary->late_deduction,
+                'Salary Advance Deduction' => $salary->advance_deduction,
+                // 'Late Fee Deduction' => $salary->late_fee_deduction,
                 'Absent Deduction' => $salary->absent_deduction,
                 'Provident Fund' => $salary->provident_fund,
                 'Other Deductions' => $salary->other_deductions
@@ -873,86 +1012,182 @@ class SalaryController extends Controller
         return redirect()->back()->with('success', 'Salary record deleted successfully');
     }
 
+    // public function bulkAction(Request $request)
+    // {
+    //     $request->validate([
+    //         'action' => 'required|in:approve,pay,delete',
+    //         'ids' => 'required|array',
+    //         'ids.*' => 'exists:salaries,id'
+    //     ]);
+
+    //     $salaries = Salary::whereIn('id', $request->ids)->get();
+    //     $count = 0;
+
+    //     DB::beginTransaction();
+    //     try {
+    //         foreach ($salaries as $salary) {
+    //             switch ($request->action) {
+    //                 case 'approve':
+    //                     if ($salary->status == 'pending') {
+    //                         $salary->update(['status' => 'approved']);
+    //                         $count++;
+    //                         Log::info('Salary approved', ['salary_id' => $salary->id]);
+    //                     }
+    //                     break;
+
+    //                 case 'pay':
+    //                     if (in_array($salary->status, ['pending', 'approved'])) {
+    //                         // For bulk payment, use default payment method (cash)
+    //                         $salary->update([
+    //                             'status' => 'paid'
+    //                         ]);
+    //                         $payableSalary = $salary->final_salary ?: $salary->net_salary;
+    //                         // Create payment record without account (for bulk payment)
+    //                         Payment::create([
+    //                             'salary_id' => $salary->id,
+    //                             'employee_id' => $salary->employee_id,
+    //                             'amount' => -$payableSalary,
+    //                             // 'amount' => -$salary->net_salary, // এখানে negative করে দিন
+    //                             'payment_method' => 'cash',
+    //                             'txn_ref' => 'BULK-' . strtoupper(Str::random(8)),
+    //                             'note' => 'Bulk salary payment for ' . Carbon::create($salary->year, $salary->month, 1)->format('F Y'),
+    //                             'account_id' => null,
+    //                             'paid_at' => Carbon::now(),
+    //                             'created_by' => Auth::id()
+    //                         ]);
+
+    //                         $count++;
+    //                         Log::info('Salary marked as paid in bulk', ['salary_id' => $salary->id]);
+    //                     }
+    //                     break;
+
+    //                 case 'delete':
+    //                     if ($salary->status != 'paid') {
+    //                         $salary->delete();
+    //                         $count++;
+    //                         Log::info('Salary deleted', ['salary_id' => $salary->id]);
+    //                     }
+    //                     break;
+    //             }
+    //         }
+
+    //         DB::commit();
+
+    //         $actionNames = [
+    //             'approve' => 'approved',
+    //             'pay' => 'paid',
+    //             'delete' => 'deleted'
+    //         ];
+
+    //         Log::info('Bulk action completed', [
+    //             'action' => $request->action,
+    //             'count' => $count,
+    //             'total' => count($request->ids)
+    //         ]);
+
+    //         return redirect()->back()->with('success', "{$count} salary records {$actionNames[$request->action]} successfully");
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         Log::error('Bulk action failed: ' . $e->getMessage());
+    //         return redirect()->back()->with('error', 'Error performing bulk action: ' . $e->getMessage());
+    //     }
+    // }
+
     public function bulkAction(Request $request)
-    {
-        $request->validate([
-            'action' => 'required|in:approve,pay,delete',
-            'ids' => 'required|array',
-            'ids.*' => 'exists:salaries,id'
+{
+    $request->validate([
+        'action' => 'required|in:approve,pay,delete',
+        'ids' => 'required|array',
+        'ids.*' => 'exists:salaries,id'
+    ]);
+
+    $salaries = Salary::whereIn('id', $request->ids)->get();
+    $count = 0;
+
+    DB::beginTransaction();
+
+    try {
+        foreach ($salaries as $salary) {
+            switch ($request->action) {
+                case 'approve':
+                    if ($salary->status == 'pending') {
+                        $salary->update(['status' => 'approved']);
+                        $count++;
+
+                        Log::info('Salary approved', [
+                            'salary_id' => $salary->id
+                        ]);
+                    }
+                    break;
+
+                case 'pay':
+                    if (in_array($salary->status, ['pending', 'approved'])) {
+                        $salary->update([
+                            'status' => 'paid'
+                        ]);
+
+                        $payableSalary = $salary->final_salary ?: $salary->net_salary;
+
+                        Payment::create([
+                            'reference_type' => 'salary_payment',
+                            'reference_id' => $salary->id,
+                            'salary_id' => $salary->id,
+                            'employee_id' => $salary->employee_id,
+                            'amount' => -$payableSalary,
+                            'payment_method' => 'cash',
+                            'txn_ref' => 'BULK-' . strtoupper(Str::random(8)),
+                            'note' => 'Bulk salary payment for ' . Carbon::create($salary->year, $salary->month, 1)->format('F Y'),
+                            'account_id' => null,
+                            'paid_at' => Carbon::now(),
+                            'created_by' => Auth::id()
+                        ]);
+
+                        $count++;
+
+                        Log::info('Salary marked as paid in bulk', [
+                            'salary_id' => $salary->id,
+                            'payable_salary' => $payableSalary
+                        ]);
+                    }
+                    break;
+
+                case 'delete':
+                    if ($salary->status != 'paid') {
+                        $salary->delete();
+                        $count++;
+
+                        Log::info('Salary deleted', [
+                            'salary_id' => $salary->id
+                        ]);
+                    }
+                    break;
+            }
+        }
+
+        DB::commit();
+
+        $actionNames = [
+            'approve' => 'approved',
+            'pay' => 'paid',
+            'delete' => 'deleted'
+        ];
+
+        Log::info('Bulk action completed', [
+            'action' => $request->action,
+            'count' => $count,
+            'total' => count($request->ids)
         ]);
 
-        $salaries = Salary::whereIn('id', $request->ids)->get();
-        $count = 0;
+        return redirect()->back()->with('success', "{$count} salary records {$actionNames[$request->action]} successfully");
 
-        DB::beginTransaction();
-        try {
-            foreach ($salaries as $salary) {
-                switch ($request->action) {
-                    case 'approve':
-                        if ($salary->status == 'pending') {
-                            $salary->update(['status' => 'approved']);
-                            $count++;
-                            Log::info('Salary approved', ['salary_id' => $salary->id]);
-                        }
-                        break;
+    } catch (\Exception $e) {
+        DB::rollBack();
 
-                    case 'pay':
-                        if (in_array($salary->status, ['pending', 'approved'])) {
-                            // For bulk payment, use default payment method (cash)
-                            $salary->update([
-                                'status' => 'paid'
-                            ]);
+        Log::error('Bulk action failed: ' . $e->getMessage());
 
-                            // Create payment record without account (for bulk payment)
-                            Payment::create([
-                                'salary_id' => $salary->id,
-                                'employee_id' => $salary->employee_id,
-                                'amount' => -$salary->net_salary, // এখানে negative করে দিন
-                                'payment_method' => 'cash',
-                                'txn_ref' => 'BULK-' . strtoupper(Str::random(8)),
-                                'note' => 'Bulk salary payment for ' . Carbon::create($salary->year, $salary->month, 1)->format('F Y'),
-                                'account_id' => null,
-                                'paid_at' => Carbon::now(),
-                                'created_by' => Auth::id()
-                            ]);
-
-                            $count++;
-                            Log::info('Salary marked as paid in bulk', ['salary_id' => $salary->id]);
-                        }
-                        break;
-
-                    case 'delete':
-                        if ($salary->status != 'paid') {
-                            $salary->delete();
-                            $count++;
-                            Log::info('Salary deleted', ['salary_id' => $salary->id]);
-                        }
-                        break;
-                }
-            }
-
-            DB::commit();
-
-            $actionNames = [
-                'approve' => 'approved',
-                'pay' => 'paid',
-                'delete' => 'deleted'
-            ];
-
-            Log::info('Bulk action completed', [
-                'action' => $request->action,
-                'count' => $count,
-                'total' => count($request->ids)
-            ]);
-
-            return redirect()->back()->with('success', "{$count} salary records {$actionNames[$request->action]} successfully");
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Bulk action failed: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Error performing bulk action: ' . $e->getMessage());
-        }
+        return redirect()->back()->with('error', 'Error performing bulk action: ' . $e->getMessage());
     }
+}
 
     // ✅ NEW: Get salary summary report
     public function report(Request $request)
@@ -975,8 +1210,8 @@ class SalaryController extends Controller
             'total_bonus' => $salaries->sum('total_bonus'),
             'total_overtime' => $salaries->sum('overtime_amount'),
             'total_deductions' => $salaries->sum('total_deductions'),
-            'total_net_salary' => $salaries->sum('net_salary'),
-            'average_salary' => $salaries->avg('net_salary')
+            'total_net_salary' => $salaries->sum('final_salary') ?: $salaries->sum('net_salary'),
+            'average_salary' => $salaries->avg('final_salary') ?: $salaries->avg('net_salary')
         ];
 
         return Inertia::render('Salary/Report', [
@@ -1057,6 +1292,9 @@ class SalaryController extends Controller
                     'total_bonus' => $salary->total_bonus,
                     'total_deductions' => $salary->total_deductions,
                     'net_salary' => $salary->net_salary,
+                    'advance_deduction' => $salary->advance_deduction,
+                    'late_fee_deduction' => $salary->late_fee_deduction,
+                    'final_salary' => $salary->final_salary,
                     'status' => $salary->status
                 ]
             ]);
