@@ -10,6 +10,7 @@ use App\Http\Controllers\BarcodePrintController;
 use App\Http\Controllers\BonusSettingController;
 use App\Http\Controllers\BorrowerController;
 use App\Http\Controllers\BrandController;
+use App\Http\Controllers\BusinessSettingController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\CustomerController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\ExchangeController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ExpenseReportController;
 use App\Http\Controllers\ExtraCashController;
 use App\Http\Controllers\HeaderController;
 use App\Http\Controllers\InstallmentController;
@@ -253,7 +255,17 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         ->middleware('permission:return.delete')
         ->name('salesReturn.destroy');
 
+Route::controller(BusinessSettingController::class)
+    ->prefix('business-settings')
+    ->group(function () {
+        Route::get('/', 'edit')
+            ->middleware('permission:business_settings.view')
+            ->name('business-settings.edit');
 
+        Route::put('/', 'update')
+            ->middleware('permission:business_settings.edit')
+            ->name('business-settings.update');
+    });
 
 
     // account route will be here
@@ -333,6 +345,9 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         Route::post('/expense', 'store')->middleware('permission:expense.create')->name('expenses.post');
         Route::get('/expense/{id}', 'distroy')->middleware('permission:expense.delete')->name('expenses.del');
     });
+
+    Route::get('/expense-reports/monthly-cost', [ExpenseReportController::class, 'monthlyCost'])
+    ->name('expense-reports.monthly-cost');
 
     // extra cash
     Route::controller(ExtraCashController::class)->group(function () {

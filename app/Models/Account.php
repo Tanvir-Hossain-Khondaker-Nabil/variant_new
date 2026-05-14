@@ -27,11 +27,15 @@ class Account extends Model
         'user_id',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'is_petty_cash',
+'is_locked',
     ];
 
     protected $casts = [
         'current_balance' => 'float',
+         'is_petty_cash' => 'boolean',
+    'is_locked' => 'boolean',
     ];
 
 

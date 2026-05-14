@@ -11,18 +11,24 @@ use App\Models\Concerns\BelongsToTenant;
 class Expense extends Model
 {
     // fillable
-        protected $fillable = [
-        'date', 
-        'details', 
-        'amount', 
-        'sh_amount', 
+    protected $fillable = [
+        'date',
+        'details',
+        'amount',
+        'sh_amount',
         'category_id',
         'payment_id',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'cost_type',
+        'is_petty_cash_expense',
+        'payment_source',
     ];
 
+    protected $casts = [
+    'is_petty_cash_expense' => 'boolean',
+];
 
     use BelongsToTenant;
 
@@ -37,7 +43,7 @@ class Expense extends Model
         return $this->belongsTo(ExpenseCategory::class, 'category_id');
     }
 
-    public function payments()  
+    public function payments()
     {
         return $this->hasMany(Payment::class, 'expense_id');
     }

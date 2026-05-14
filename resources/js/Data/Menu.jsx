@@ -29,10 +29,18 @@ import {
     Plane,
     BoxIcon,
     TagIcon,
-    Settings
+    Settings,
+    Bell
 } from "lucide-react";
 
 const baseMenu = [
+    {
+    title: "Business Settings",
+    icon: <Settings size={16} />,
+    route: route("business-settings.edit"),
+    active: "business-settings.edit",
+    role: "all",
+},
     {
         title: "Dashboard",
         icon: <Home size={16} />,
@@ -218,7 +226,8 @@ const baseMenu = [
 
     {
         title: "Notifications",
-        icon: <Notificatiion size={16} />,
+        icon: <Bell size={16} />,
+        // icon: <Notificatiion size={16} />,
         route: route("notifications.index"),
         active: "notifications.index",
         role: "all",
@@ -275,6 +284,13 @@ const baseMenu = [
     },
 
     // ============ HR/EMPLOYEE MANAGEMENT MENU ITEMS ============
+    // {
+    //     title: "Business Settings",
+    //     icon: <Settings size={16} />,
+    //     route: route("business-settings.edit"),
+    //     active: "business-settings.edit",
+    //     role: "all",
+    // },
     {
         title: "Employees",
         icon: <Users size={16} />,

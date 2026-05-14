@@ -2,10 +2,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
+use App\Models\BusinessSetting;
 use App\Models\Employee;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -294,25 +296,86 @@ class AttendanceController extends Controller
     }
 
     // ✅ Store Manual Attendance
+    // public function store(Request $request)
+    // {
+    //     $request->validate([
+    //         'employee_id' => 'required|exists:employees,id',
+    //         'date' => 'required|date',
+    //         'check_in' => 'required|date_format:H:i',
+    //         'check_out' => 'required|date_format:H:i',
+    //     ]);
+
+    //     // Check if attendance already exists
+    //     $existing = Attendance::where('employee_id', $request->employee_id)
+    //         ->whereDate('date', $request->date)
+    //         ->first();
+
+    //     if ($existing) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Attendance already exists for this date'
+    //         ], 400);
+    //     }
+
+    //     $attendance = Attendance::create([
+    //         'employee_id' => $request->employee_id,
+    //         'date' => $request->date,
+    //         'check_in' => $request->check_in,
+    //         'check_out' => $request->check_out,
+    //     ]);
+
+    //     $attendance->refresh();
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Attendance recorded successfully',
+    //         'attendance' => $attendance->load('employee')
+    //     ]);
+    // }
+
     public function store(Request $request)
-    {
-        $request->validate([
-            'employee_id' => 'required|exists:employees,id',
-            'date' => 'required|date',
-            'check_in' => 'required|date_format:H:i',
-            'check_out' => 'required|date_format:H:i',
-        ]);
+{
+    $request->validate([
+        'employee_id' => 'required|exists:employees,id',
+        'date' => 'required|date',
+        'check_in' => 'required|date_format:H:i',
+        'check_out' => 'required|date_format:H:i',
+    ]);
 
-        // Check if attendance already exists
-        $existing = Attendance::where('employee_id', $request->employee_id)
-            ->whereDate('date', $request->date)
-            ->first();
+    $existing = Attendance::where('employee_id', $request->employee_id)
+        ->whereDate('date', $request->date)
+        ->first();
 
-        if ($existing) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Attendance already exists for this date'
-            ], 400);
+    if ($existing) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Attendance already exists for this date'
+        ], 400);
+    }
+
+    try {
+        $settings = BusinessSetting::current();
+
+        $attendanceStatus = 'present';
+        $checkInTime = $request->check_in;
+        $lateMinutes = 0;
+        $lateFee = 0;
+
+        if (
+            $settings &&
+            $settings->auto_late_calculation &&
+            $checkInTime
+        ) {
+            $officeStart = Carbon::parse($settings->office_start_time);
+            $checkIn = Carbon::parse($checkInTime);
+
+            $diffMinutes = $officeStart->diffInMinutes($checkIn, false);
+
+            if ($diffMinutes > $settings->late_after_minutes) {
+                $attendanceStatus = 'late';
+                $lateMinutes = $diffMinutes;
+                $lateFee = $settings->late_fee_amount;
+            }
         }
 
         $attendance = Attendance::create([
@@ -320,6 +383,13 @@ class AttendanceController extends Controller
             'date' => $request->date,
             'check_in' => $request->check_in,
             'check_out' => $request->check_out,
+
+            // new fields
+            'attendance_status' => $attendanceStatus,
+            'check_in_time' => $checkInTime,
+            'late_minutes' => $lateMinutes,
+            'late_fee' => $lateFee,
+            'created_by' => Auth::id(),
         ]);
 
         $attendance->refresh();
@@ -329,7 +399,14 @@ class AttendanceController extends Controller
             'message' => 'Attendance recorded successfully',
             'attendance' => $attendance->load('employee')
         ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
 
     // ✅ Monthly Report
     public function monthlyReport(Request $request)
