@@ -1,2 +1,591 @@
-import React,{useState}from"react";import{Link,router}from"@inertiajs/react";import{ArrowLeft,RotateCcw,CheckCircle,X}from"lucide-react";import{toast}from"react-toastify";
-export default function PickupHoldShow({hold,accounts=[]}){const[modal,setModal]=useState(null),[item,setItem]=useState(null),[qty,setQty]=useState(""),[price,setPrice]=useState(""),[paid,setPaid]=useState(""),[account,setAccount]=useState(""),[notes,setNotes]=useState(""),[processing,setProcessing]=useState(false);const fmt=v=>(Number(v)||0).toFixed(2);const variantName=i=>{const a=i.variant?.attribute_values||{};return Object.keys(a).length?Object.entries(a).map(([k,v])=>`${k}: ${v}`).join(" | "):(i.variant?.sku||"Default")};const open=(type,i)=>{setModal(type);setItem(i);setQty(i.remaining_quantity);setPrice(type==="sold"?(hold.direction==="outgoing"?i.sale_price:i.unit_price):i.unit_price);setPaid("");setAccount("");setNotes("")};const close=()=>{setModal(null);setItem(null);setQty("");setProcessing(false)};const submit=e=>{e.preventDefault();if(!item)return;const q=Number(qty)||0;if(q<=0)return toast.error("Qty required");if(q>Number(item.remaining_quantity))return toast.error("Qty exceeds remaining");setProcessing(true);router.post(route(modal==="return"?"pickup-hold-items.return":"pickup-hold-items.sold",item.id),modal==="return"?{quantity:q,notes}:{quantity:q,unit_price:Number(price)||0,paid_amount:Number(paid)||0,account_id:account||null,notes},{preserveScroll:true,onSuccess:()=>close(),onFinish:()=>setProcessing(false)})};return <div className="min-h-screen bg-slate-50 p-4"><div className="max-w-7xl mx-auto"><div className="flex justify-between mb-5"><div><h1 className="text-2xl font-black">{hold.hold_no}</h1><p className="text-sm text-gray-500">{hold.direction} - {hold.shop?.name}</p></div><Link href={route("pickup-holds.index")} className="btn btn-outline btn-sm"><ArrowLeft size={16}/>Back</Link></div><div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5"><div className="bg-white rounded-2xl border p-4"><div className="text-xs">Shop</div><b>{hold.shop?.name}</b><div className="text-sm">{hold.shop?.phone}</div></div><div className="bg-white rounded-2xl border p-4"><div className="text-xs">Total</div><b className="text-2xl">{hold.total_quantity}</b></div><div className="bg-white rounded-2xl border p-4"><div className="text-xs">Remaining</div><b className="text-2xl text-orange-600">{hold.remaining_quantity}</b></div><div className="bg-white rounded-2xl border p-4"><div className="text-xs">Status</div><b>{hold.status}</b></div></div><div className="bg-white rounded-2xl border overflow-hidden mb-5"><table className="table table-zebra"><thead><tr><th>Product</th><th>Variant</th><th>Warehouse</th><th>Qty</th><th>Remaining</th><th>Sold</th><th>Returned</th><th>Price</th><th>Action</th></tr></thead><tbody>{(hold.items||[]).map(i=><tr key={i.id}><td><b>{i.product?.name}</b><div className="text-xs">{i.product?.product_no}</div></td><td>{variantName(i)}</td><td>{i.warehouse?.name||"N/A"}</td><td>{i.quantity} {i.unit}</td><td className="font-bold text-orange-600">{i.remaining_quantity}</td><td>{i.sold_quantity}</td><td>{i.returned_quantity}</td><td>{hold.direction==="outgoing"?fmt(i.sale_price):fmt(i.unit_price)}</td><td>{Number(i.remaining_quantity)>0&&<div className="flex gap-2"><button onClick={()=>open("return",i)} className="btn btn-outline btn-xs"><RotateCcw size={13}/>Return</button><button onClick={()=>open("sold",i)} className="btn btn-primary btn-xs"><CheckCircle size={13}/>Sold/Confirm</button></div>}</td></tr>)}</tbody></table></div><div className="bg-white rounded-2xl border overflow-hidden"><table className="table table-zebra"><thead><tr><th>Action</th><th>Qty</th><th>Total</th><th>Sale/Purchase</th><th>Notes</th></tr></thead><tbody>{(hold.actions||[]).map(a=><tr key={a.id}><td><span className="badge badge-neutral">{a.action_type}</span></td><td>{a.quantity}</td><td>{fmt(a.total_price)}</td><td>{a.sale_id?`Sale #${a.sale_id}`:""}{a.purchase_id?`Purchase #${a.purchase_id}`:""}</td><td>{a.notes||"N/A"}</td></tr>)}</tbody></table></div>{modal&&item&&<div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"><form onSubmit={submit} className="bg-white rounded-2xl w-full max-w-md"><div className="p-5 border-b flex justify-between"><h3 className="font-black">{modal==="return"?"Return":"Sold / Confirm"}</h3><button type="button" onClick={close} className="btn btn-ghost btn-sm btn-circle"><X size={18}/></button></div><div className="p-5 space-y-3"><div className="bg-slate-50 p-3 rounded-xl"><b>{item.product?.name}</b><div className="text-xs">Remaining: {item.remaining_quantity}</div></div><input type="number" step="0.0001" className="input input-bordered w-full" value={qty} onChange={e=>setQty(e.target.value)} placeholder="Quantity"/>{modal==="sold"&&<><input type="number" step="0.01" className="input input-bordered w-full" value={price} onChange={e=>setPrice(e.target.value)} placeholder="Price"/><input type="number" step="0.01" className="input input-bordered w-full" value={paid} onChange={e=>setPaid(e.target.value)} placeholder="Paid Amount"/><select className="select select-bordered w-full" value={account} onChange={e=>setAccount(e.target.value)}><option value="">Account</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} - {a.type}</option>)}</select></>}<textarea className="textarea textarea-bordered w-full" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes"/></div><div className="p-5 border-t text-right"><button disabled={processing} className="btn btn-primary">Submit</button></div></form></div>}</div></div>}
+import React, { useState } from "react";
+import { Link, router } from "@inertiajs/react";
+import {
+    ArrowLeft,
+    RotateCcw,
+    CheckCircle,
+    Package,
+    History,
+    X,
+    Store,
+    Calendar,
+    DollarSign,
+    Info,
+} from "lucide-react";
+
+export default function PickupHoldShow({ hold = {}, accounts = [] }) {
+    const [modal, setModal] = useState(null);
+    const [selectedItem, setSelectedItem] = useState(null);
+
+    const [quantity, setQuantity] = useState("");
+    const [unitPrice, setUnitPrice] = useState("");
+    const [paidAmount, setPaidAmount] = useState("");
+    const [accountId, setAccountId] = useState("");
+    const [notes, setNotes] = useState("");
+    const [processing, setProcessing] = useState(false);
+
+    const safeItems = Array.isArray(hold?.items) ? hold.items : [];
+    const safeActions = Array.isArray(hold?.actions) ? hold.actions : [];
+    const safeAccounts = Array.isArray(accounts) ? accounts : [];
+
+    const formatCurrency = (value) => {
+        const num = Number(value) || 0;
+        return num.toFixed(2);
+    };
+
+    const formatDate = (date) => {
+        if (!date) return "N/A";
+
+        try {
+            return new Date(date).toLocaleDateString();
+        } catch {
+            return date;
+        }
+    };
+
+    const formatVariant = (item) => {
+        const attrs = item?.variant?.attribute_values || {};
+
+        if (!attrs || Object.keys(attrs).length === 0) {
+            return item?.variant?.sku || "Default Variant";
+        }
+
+        return Object.entries(attrs)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(" | ");
+    };
+
+    const openActionModal = (type, item) => {
+        setModal(type);
+        setSelectedItem(item);
+
+        setQuantity(item.remaining_quantity || "");
+
+        const defaultPrice =
+            type === "sold"
+                ? hold.direction === "outgoing"
+                    ? item.sale_price
+                    : item.unit_price
+                : item.unit_price;
+
+        setUnitPrice(defaultPrice || "");
+        setPaidAmount("");
+        setAccountId("");
+        setNotes("");
+    };
+
+    const closeModal = () => {
+        setModal(null);
+        setSelectedItem(null);
+        setQuantity("");
+        setUnitPrice("");
+        setPaidAmount("");
+        setAccountId("");
+        setNotes("");
+        setProcessing(false);
+    };
+
+    const submitAction = (e) => {
+        e.preventDefault();
+
+        if (!selectedItem || !modal) return;
+
+        const qty = Number(quantity) || 0;
+
+        if (qty <= 0) {
+            alert("Quantity must be greater than zero");
+            return;
+        }
+
+        if (qty > Number(selectedItem.remaining_quantity || 0)) {
+            alert("Quantity cannot exceed remaining quantity");
+            return;
+        }
+
+        const routeName =
+            modal === "return"
+                ? "pickup-hold-items.return"
+                : "pickup-hold-items.sold";
+
+        const payload =
+            modal === "return"
+                ? {
+                      quantity: qty,
+                      notes,
+                  }
+                : {
+                      quantity: qty,
+                      unit_price: Number(unitPrice) || 0,
+                      paid_amount: Number(paidAmount) || 0,
+                      account_id: accountId || null,
+                      notes,
+                  };
+
+        setProcessing(true);
+
+        router.post(route(routeName, selectedItem.id), payload, {
+            preserveScroll: true,
+            onError: (errors) => {
+                console.error(errors);
+                alert("Action failed");
+            },
+            onFinish: () => setProcessing(false),
+        });
+    };
+
+    const getStatusBadgeClass = (status) => {
+        switch (status) {
+            case "active":
+                return "badge-info";
+            case "partial":
+                return "badge-warning";
+            case "completed":
+                return "badge-success";
+            case "cancelled":
+                return "badge-error";
+            default:
+                return "badge-neutral";
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+            <div className="max-w-7xl mx-auto">
+                <div className="mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+                            <Package size={24} className="text-primary" />
+                            {hold.hold_no || "Pickup Hold"}
+                        </h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {hold.direction === "outgoing"
+                                ? "Outgoing: shop took my product on hold"
+                                : "Incoming: I took shop product on hold"}
+                        </p>
+                    </div>
+
+                    <Link href={route("pickup-holds.index")} className="btn btn-outline btn-sm">
+                        <ArrowLeft size={16} />
+                        Back
+                    </Link>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <Store size={13} />
+                            Shop
+                        </div>
+                        <div className="font-black text-lg">{hold.shop?.name || "N/A"}</div>
+                        <div className="text-sm text-gray-500">{hold.shop?.phone || "N/A"}</div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Total Qty</div>
+                        <div className="font-black text-2xl">{hold.total_quantity || 0}</div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Remaining Qty</div>
+                        <div className="font-black text-2xl text-orange-600">
+                            {hold.remaining_quantity || 0}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Status</div>
+                        <div>
+                            <span className={`badge ${getStatusBadgeClass(hold.status)}`}>
+                                {hold.status || "N/A"}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Direction</div>
+                        <div className="font-bold capitalize">{hold.direction || "N/A"}</div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Sold Qty</div>
+                        <div className="font-black text-xl text-green-600">
+                            {hold.sold_quantity || 0}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500">Returned Qty</div>
+                        <div className="font-black text-xl text-blue-600">
+                            {hold.returned_quantity || 0}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <Calendar size={13} />
+                            Hold Date
+                        </div>
+                        <div className="font-bold">{formatDate(hold.hold_date)}</div>
+                    </div>
+                </div>
+
+                {hold.notes && (
+                    <div className="bg-white rounded-2xl border shadow-sm p-4 mb-5">
+                        <div className="text-xs text-gray-500 flex items-center gap-1 mb-1">
+                            <Info size={13} />
+                            Notes
+                        </div>
+                        <div className="text-sm text-gray-700">{hold.notes}</div>
+                    </div>
+                )}
+
+                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-5">
+                    <div className="p-5 border-b flex items-center gap-2">
+                        <Package size={18} className="text-primary" />
+                        <h2 className="font-black text-gray-900">Hold Items</h2>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="table table-zebra">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Variant</th>
+                                    <th>Warehouse</th>
+                                    <th>Qty</th>
+                                    <th>Remaining</th>
+                                    <th>Sold</th>
+                                    <th>Returned</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                    <th className="text-right">Actions</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {safeItems.length > 0 ? (
+                                    safeItems.map((item) => (
+                                        <tr key={item.id}>
+                                            <td>
+                                                <div className="font-bold">
+                                                    {item.product?.name || "N/A"}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {item.product?.product_no || "N/A"}
+                                                </div>
+                                            </td>
+
+                                            <td className="text-sm">{formatVariant(item)}</td>
+
+                                            <td>{item.warehouse?.name || "N/A"}</td>
+
+                                            <td>
+                                                {item.quantity || 0} {item.unit}
+                                            </td>
+
+                                            <td className="font-bold text-orange-600">
+                                                {item.remaining_quantity || 0}
+                                            </td>
+
+                                            <td>{item.sold_quantity || 0}</td>
+
+                                            <td>{item.returned_quantity || 0}</td>
+
+                                            <td>
+                                                {hold.direction === "outgoing"
+                                                    ? formatCurrency(item.sale_price)
+                                                    : formatCurrency(item.unit_price)}
+                                            </td>
+
+                                            <td>
+                                                <span className="badge badge-neutral">
+                                                    {item.status || "N/A"}
+                                                </span>
+                                            </td>
+
+                                            <td className="text-right">
+                                                {Number(item.remaining_quantity || 0) > 0 ? (
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openActionModal("return", item)
+                                                            }
+                                                            className="btn btn-outline btn-xs"
+                                                        >
+                                                            <RotateCcw size={14} />
+                                                            Return
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openActionModal("sold", item)
+                                                            }
+                                                            className="btn btn-primary btn-xs"
+                                                        >
+                                                            <CheckCircle size={14} />
+                                                            Sold / Confirm
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">
+                                                        Completed
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="10">
+                                            <div className="py-10 text-center text-gray-500">
+                                                <Package
+                                                    size={34}
+                                                    className="mx-auto mb-2 text-gray-300"
+                                                />
+                                                No hold items found
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                    <div className="p-5 border-b flex items-center gap-2">
+                        <History size={18} className="text-primary" />
+                        <h2 className="font-black text-gray-900">Action History</h2>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="table table-zebra">
+                            <thead>
+                                <tr>
+                                    <th>Action</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Total</th>
+                                    <th>Sale / Purchase</th>
+                                    <th>Notes</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {safeActions.length > 0 ? (
+                                    safeActions.map((action) => (
+                                        <tr key={action.id}>
+                                            <td>
+                                                <span
+                                                    className={`badge ${
+                                                        action.action_type === "sold"
+                                                            ? "badge-success"
+                                                            : "badge-info"
+                                                    }`}
+                                                >
+                                                    {action.action_type}
+                                                </span>
+                                            </td>
+
+                                            <td>{action.quantity || 0}</td>
+
+                                            <td>{formatCurrency(action.unit_price)}</td>
+
+                                            <td>{formatCurrency(action.total_price)}</td>
+
+                                            <td>
+                                                {action.sale_id ? (
+                                                    <div>Sale #{action.sale_id}</div>
+                                                ) : null}
+
+                                                {action.purchase_id ? (
+                                                    <div>Purchase #{action.purchase_id}</div>
+                                                ) : null}
+
+                                                {!action.sale_id && !action.purchase_id ? "N/A" : null}
+                                            </td>
+
+                                            <td>{action.notes || "N/A"}</td>
+
+                                            <td>{formatDate(action.created_at)}</td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="7">
+                                            <div className="py-8 text-center text-gray-500">
+                                                No action history yet
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {modal && selectedItem && (
+                    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                        <form
+                            onSubmit={submitAction}
+                            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+                        >
+                            <div className="p-5 border-b flex items-center justify-between bg-slate-50">
+                                <div>
+                                    <h3 className="font-black text-lg capitalize">
+                                        {modal === "return"
+                                            ? "Return Item"
+                                            : "Sold / Confirm Item"}
+                                    </h3>
+                                    <p className="text-xs text-gray-500">
+                                        Remaining: {selectedItem.remaining_quantity}{" "}
+                                        {selectedItem.unit}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="btn btn-ghost btn-sm btn-circle"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-5 space-y-4">
+                                <div className="bg-slate-50 rounded-xl p-3">
+                                    <div className="font-bold">
+                                        {selectedItem.product?.name || "N/A"}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                        {formatVariant(selectedItem)}
+                                    </div>
+                                </div>
+
+                                <div className="form-control">
+                                    <label className="label">
+                                        <span className="label-text font-bold">Quantity</span>
+                                    </label>
+
+                                    <input
+                                        type="number"
+                                        
+                                        min="0"
+                                        className="input input-bordered"
+                                        value={quantity}
+                                        onChange={(e) => setQuantity(e.target.value)}
+                                    />
+                                </div>
+
+                                {modal === "sold" && (
+                                    <>
+                                        <div className="form-control">
+                                            <label className="label">
+                                                <span className="label-text font-bold">
+                                                    {hold.direction === "outgoing"
+                                                        ? "Sale Price"
+                                                        : "Purchase Price"}
+                                                </span>
+                                            </label>
+
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                className="input input-bordered"
+                                                value={unitPrice}
+                                                onChange={(e) =>
+                                                    setUnitPrice(e.target.value)
+                                                }
+                                            />
+                                        </div>
+
+                                        <div className="form-control">
+                                            <label className="label">
+                                                <span className="label-text font-bold">
+                                                    Paid Amount
+                                                </span>
+                                            </label>
+
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                className="input input-bordered"
+                                                value={paidAmount}
+                                                onChange={(e) =>
+                                                    setPaidAmount(e.target.value)
+                                                }
+                                            />
+                                        </div>
+
+                                        <div className="form-control">
+                                            <label className="label">
+                                                <span className="label-text font-bold">
+                                                    Account
+                                                </span>
+                                            </label>
+
+                                            <select
+                                                className="select select-bordered"
+                                                value={accountId}
+                                                onChange={(e) =>
+                                                    setAccountId(e.target.value)
+                                                }
+                                            >
+                                                <option value="">Select Account</option>
+
+                                                {safeAccounts.map((account) => (
+                                                    <option key={account.id} value={account.id}>
+                                                        {account.name} - {account.type}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="form-control">
+                                    <label className="label">
+                                        <span className="label-text font-bold">Notes</span>
+                                    </label>
+
+                                    <textarea
+                                        className="textarea textarea-bordered"
+                                        value={notes}
+                                        onChange={(e) => setNotes(e.target.value)}
+                                        placeholder="Optional notes"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="p-5 border-t flex justify-end gap-2 bg-slate-50">
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="btn btn-outline"
+                                    disabled={processing}
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    disabled={processing}
+                                    className="btn btn-primary"
+                                >
+                                    {processing ? "Processing..." : "Submit"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

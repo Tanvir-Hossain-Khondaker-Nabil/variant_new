@@ -1121,6 +1121,7 @@ class SalesController extends Controller
 
         $businessProfile = BusinessProfile::where('created_by', $user->id)->first();
 
+
         $sale = Sale::with([
             'customer',
             'items.product.brand',

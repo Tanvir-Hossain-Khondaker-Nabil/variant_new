@@ -1,1109 +1,1408 @@
 // resources/js/Pages/sales/SaleShow.jsx
-import React, { useMemo, useState, useEffect, useRef } from "react";
+
+import React, { useMemo } from "react";
 import { usePage, router } from "@inertiajs/react";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 
 export default function SaleShow({
-  sale,
-  isShadowUser = false,
-  businessProfile,
-
-  // ✅ POS Roll / XP-365B support
-  posPaperWidthMm = 72, // default UI width
-  printerMaxPrintableMm = 76, // XP-365B printable width
-  printXOffsetMm = 0, // driver alignment
+    sale,
+    isShadowUser = false,
+    businessProfile,
+    posPaperWidthMm = 72,
+    printerMaxPrintableMm = 76,
+    printXOffsetMm = 0,
 }) {
-  const { auth } = usePage().props;
+    const { auth } = usePage().props;
 
-  // =========================
-  // ✅ Helpers
-  // =========================
-  const toNum = (v) => {
-    if (v === null || v === undefined || v === "") return 0;
-    const x = parseFloat(v);
-    return Number.isFinite(x) ? x : 0;
-  };
-
-  const hasValue = (v) => v !== null && v !== undefined && v !== "";
-
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-
-  const resolveAssetUrl = (path) => {
-    if (!path) return "";
-    if (typeof path !== "string") return "";
-    if (path.startsWith("http://") || path.startsWith("https://")) return path;
-    if (path.startsWith("/")) return path;
-    return `/storage/${path}`;
-  };
-
-  const toBanglaDigit = (value) => {
-    const map = {
-      0: "০",
-      1: "১",
-      2: "২",
-      3: "৩",
-      4: "৪",
-      5: "৫",
-      6: "৬",
-      7: "৭",
-      8: "৮",
-      9: "৯",
+    const resolveAssetUrl = (path) => {
+        if (!path) return "";
+        if (typeof path !== "string") return "";
+        if (path.startsWith("http://") || path.startsWith("https://")) return path;
+        if (path.startsWith("/")) return path;
+        return `/storage/${path}`;
     };
-    return String(value ?? "").replace(/\d/g, (d) => map[d]);
-  };
 
-  const formatMoneyBn = (amount) => {
-    const num = new Intl.NumberFormat("en-BD", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(toNum(amount));
-    return toBanglaDigit(num);
-  };
+    const profile = businessProfile || {};
 
-  const formatDateTimeBn = (dateString) => {
-    const d = dateString ? new Date(dateString) : new Date();
-    const pad = (x) => String(x).padStart(2, "0");
-    const dd = pad(d.getDate());
-    const mm = pad(d.getMonth() + 1);
-    const yy = d.getFullYear();
-    const hh = pad(d.getHours());
-    const mi = pad(d.getMinutes());
-    return toBanglaDigit(`${dd}/${mm}/${yy} ${hh}:${mi}`);
-  };
+    const businessName = profile?.name || "";
+    const businessEmail = profile?.email || "";
+    const businessPhone = profile?.phone || "";
+    const businessSecondPhone = profile?.secondary_phone || profile?.phone_2 || "";
+    const businessAddress = profile?.address || "";
+    const businessWebsite = profile?.website || "";
+    const businessFacebook =
+        profile?.facebook ||
+        profile?.facebook_page ||
+        profile?.fb_page ||
+        "Variant";
 
-  const formatDateTimeEn = (dateString) => {
-    const d = dateString ? new Date(dateString) : new Date();
-    const pad = (x) => String(x).padStart(2, "0");
-    const dd = pad(d.getDate());
-    const mm = pad(d.getMonth() + 1);
-    const yy = d.getFullYear();
-    const hh = pad(d.getHours());
-    const mi = pad(d.getMinutes());
-    return `${dd}/${mm}/${yy} ${hh}:${mi}`;
-  };
+    const businessLogo =
+        resolveAssetUrl(profile?.logo) ||
+        resolveAssetUrl(profile?.thum) ||
+        "";
 
-  const cleanTrailingIndex = (name) =>
-    String(name ?? "").replace(/\s+\d+$/g, "").trim();
+    const brandPolicyName = businessName || "VARIANT";
 
-  // =========================
-  // ✅ Theme
-  // =========================
-  const PRIMARY = "#103485";
+    const items = sale?.items || [];
 
-  // =========================
-  // ✅ Width controls
-  // =========================
-  const [paperWidthMm, setPaperWidthMm] = useState(() =>
-    clamp(Number(posPaperWidthMm ?? 72), 30, 100)
-  );
-
-  useEffect(() => {
-    setPaperWidthMm(clamp(Number(posPaperWidthMm ?? 72), 30, 100));
-  }, [posPaperWidthMm]);
-
-  const PRINTER_MAX_MM = Number(printerMaxPrintableMm ?? 76);
-
-  // ✅ PRINT ONLY cap to printer printable width
-  const PRINTABLE_MM = useMemo(() => {
-    const w = Number(paperWidthMm ?? 72);
-    return Math.min(w, PRINTER_MAX_MM);
-  }, [paperWidthMm, PRINTER_MAX_MM]);
-
-  const isCompact = useMemo(() => Number(paperWidthMm) < 60, [paperWidthMm]);
-
-  const scale = useMemo(() => {
-    const w = Number(paperWidthMm ?? 72);
-    return clamp(w / 80, 0.66, 1.05);
-  }, [paperWidthMm]);
-
-  // =========================
-  // ✅ Business profile
-  // =========================
-  const bp = businessProfile || {};
-  const bpLogo =
-    resolveAssetUrl(bp?.logo) ||
-    resolveAssetUrl(bp?.thum) ||
-    "/media/uploads/logo.png";
-
-  // =========================
-  // ✅ Sale data
-  // =========================
-  const posItems = useMemo(() => sale?.items || [], [sale]);
-
-  const memoNo = sale?.invoice_no || sale?.sale_no || sale?.id || "";
-
-  const cashierName =
-    sale?.cashier?.name ||
-    sale?.created_by?.name ||
-    sale?.creator?.name ||
-    auth?.user?.name ||
-    "";
-
-  // ✅ Header fields (image style)
-  const cashierId =
-    sale?.cashier?.id ||
-    sale?.created_by?.id ||
-    sale?.creator?.id ||
-    auth?.user?.id ||
-    "";
-
-  const terminalId =
-    sale?.terminal_id ||
-    bp?.terminal_id ||
-    bp?.pos_terminal_id ||
-    bp?.terminal_code ||
-    "";
-
-  const invoiceNumber = memoNo || "";
-
-  const invoiceDateEn = useMemo(
-    () => formatDateTimeEn(sale?.created_at || new Date().toISOString()),
-    [sale?.created_at]
-  );
-
-  const customerId =
-    sale?.customer?.customer_id ||
-    sale?.customer?.id ||
-    sale?.customer_id ||
-    "";
-
-  const loyaltyNote =
-    bp?.pos_loyalty_note ||
-    "To Enjoy special Discounts Please register as a loyalty customer";
-
-  const customerNamePos =
-    sale?.customer?.customer_name || sale?.customer?.name || "Walk-in Customer";
-
-  const customerPhonePos =
-    sale?.customer?.phone || sale?.customer?.mobile || "00000000000";
-
-  const todayDateTimeBn = useMemo(
-    () => formatDateTimeBn(sale?.created_at || new Date().toISOString()),
-    [sale?.created_at]
-  );
-
-  // =========================
-  // ✅ Discount
-  // =========================
-  const discountInfo = useMemo(() => {
-    const d = toNum(sale?.discount);
-    const type = sale?.discount_type;
-
-    if (!d) return { has: false, text: "", amount: 0, isPercent: false, raw: 0 };
-
-    if (type === "flat_discount" || type === "flat") {
-      return {
-        has: true,
-        text: `${formatMoneyBn(d)} ৳`,
-        amount: d,
-        isPercent: false,
-        raw: d,
-      };
-    }
-
-    return {
-      has: true,
-      text: `${toBanglaDigit(d)}%`,
-      amount: 0,
-      isPercent: true,
-      raw: d,
+    const toNum = (value) => {
+        if (value === null || value === undefined || value === "") return 0;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : 0;
     };
-  }, [sale]);
-
-  // =========================
-  // ✅ Build line rows
-  // =========================
-  const lineRows = useMemo(() => {
-    return posItems.map((it) => {
-      const rawName =
-        it?.product?.name || it?.product_name || it?.description || "N/A";
-      const name = cleanTrailingIndex(rawName);
-
-      const qty = toNum(it?.quantity ?? it?.qty ?? 0);
-      const unitName = it?.unit_name || it?.unit?.name || it?.uom || "";
-
-      const unitPrice = toNum(
-        hasValue(it?.unit_price)
-          ? it.unit_price
-          : hasValue(it?.price)
-            ? it.price
-            : hasValue(it?.selling_price)
-              ? it.selling_price
-              : hasValue(it?.rate)
-                ? it.rate
-                : 0
-      );
-
-      const total = toNum(
-        hasValue(it?.total_price)
-          ? it.total_price
-          : hasValue(it?.subtotal)
-            ? it.subtotal
-            : hasValue(it?.amount)
-              ? it.amount
-              : unitPrice * qty
-      );
-
-      const identifiers = Array.isArray(it?.identifiers) ? it.identifiers : [];
-
-      return { name, qty, unitName, unitPrice, total, identifiers };
-    });
-  }, [posItems]);
-
-  const posSubTotal = useMemo(() => {
-    if (hasValue(sale?.sub_total)) return toNum(sale.sub_total);
-    if (hasValue(sale?.subtotal)) return toNum(sale.subtotal);
-    return lineRows.reduce((sum, r) => sum + toNum(r.total), 0);
-  }, [sale, lineRows]);
-
-  const discountAmount = useMemo(() => {
-    if (!discountInfo.has) return 0;
-    if (!discountInfo.isPercent) return toNum(discountInfo.amount);
-    return (posSubTotal * toNum(discountInfo.raw)) / 100;
-  }, [discountInfo, posSubTotal]);
-
-  const totalAfterDiscount = useMemo(
-    () => posSubTotal - discountAmount,
-    [posSubTotal, discountAmount]
-  );
-
-  const rounding = useMemo(() => {
-    if (hasValue(sale?.rounding)) return toNum(sale.rounding);
-    if (hasValue(sale?.round_off)) return toNum(sale.round_off);
-
-    const net = toNum(
-      sale?.grand_total || sale?.net_payable || sale?.net_total || 0
-    );
-
-    if (net && totalAfterDiscount) {
-      const diff = net - totalAfterDiscount;
-      if (Math.abs(diff) <= 5) return diff;
-    }
-
-    return 0;
-  }, [sale, totalAfterDiscount]);
-
-  const netPayable = useMemo(() => {
-    const net = toNum(
-      hasValue(sale?.grand_total)
-        ? sale.grand_total
-        : hasValue(sale?.net_payable)
-          ? sale.net_payable
-          : hasValue(sale?.net_total)
-            ? sale.net_total
-            : 0
-    );
-
-    if (net) return net;
-    return totalAfterDiscount + rounding;
-  }, [sale, totalAfterDiscount, rounding]);
-
-  const cashPaid = useMemo(() => {
-    return toNum(
-      hasValue(sale?.cash_paid)
-        ? sale.cash_paid
-        : hasValue(sale?.paid_amount)
-          ? sale.paid_amount
-          : hasValue(sale?.payment?.amount)
-            ? sale.payment.amount
-            : 0
-    );
-  }, [sale]);
-
-  const changeAmount = useMemo(() => {
-    if (!cashPaid) return 0;
-    const ch = cashPaid - netPayable;
-    return ch > 0 ? ch : 0;
-  }, [cashPaid, netPayable]);
-
-  // =========================
-  // ✅ Discount items section
-  // =========================
-  const discountItems = useMemo(() => {
-    const arr = sale?.discount_items;
-    if (Array.isArray(arr) && arr.length) {
-      return arr.map((x) => ({
-        name: cleanTrailingIndex(
-          x?.name || x?.item || x?.product_name || "Item"
-        ),
-        amount: toNum(x?.amount || x?.discount || 0),
-      }));
-    }
-
-    const fromLines = posItems
-      .map((it) => {
-        const rawName =
-          it?.product?.name || it?.product_name || it?.description || "";
-        const name = cleanTrailingIndex(rawName);
-        const d = toNum(it?.discount_amount) || toNum(it?.discount) || 0;
-        return d > 0 ? { name: name || "Item", amount: d } : null;
-      })
-      .filter(Boolean);
-
-    return fromLines;
-  }, [sale, posItems]);
-
-  const totalSavings = useMemo(() => {
-    const backend =
-      toNum(sale?.total_savings) ||
-      toNum(sale?.discount_total) ||
-      toNum(sale?.total_discount) ||
-      0;
-
-    return backend || discountAmount || 0;
-  }, [sale, discountAmount]);
-
-  // =========================
-  // ✅ Loyalty points
-  // =========================
-  const loyalty = useMemo(() => {
-    const lp = sale?.loyalty || sale?.loyalty_points || null;
-    if (!lp) return null;
-
-    const prev = toNum(lp?.previous_points ?? lp?.prev ?? 0);
-    const earned = toNum(lp?.earned_points ?? lp?.earned ?? 0);
-    const balance = toNum(lp?.balance_points ?? lp?.balance ?? prev + earned);
-
-    return { prev, earned, balance };
-  }, [sale]);
-
-  // =========================
-  // ✅ Printing state
-  // =========================
-  const [isPrinting, setIsPrinting] = useState(false);
-  const receiptRef = useRef(null);
-
-  // =========================
-  // ✅ POS FONT/WEIGHT (matches your screenshot)
-  // =========================
-  const buildPosFontCss = (pw, paperMm, sc) => {
-    const w = Number(paperMm ?? 72);
-    const extraCompact = w <= 40;
-
-    // base font feel like thermal (bolder)
-    const s = Number(sc || 1) * (extraCompact ? 0.92 : 1);
-
-    // columns stay same logic as before
-    const colSL = extraCompact ? "5.5mm" : w < 60 ? "6mm" : "6.5mm";
-    const colUnit = extraCompact ? "12mm" : w < 60 ? "13mm" : "14mm";
-    const colQty = extraCompact ? "9mm" : w < 60 ? "10mm" : "11mm";
-    const colTotal = extraCompact ? "16mm" : w < 60 ? "18mm" : "20mm";
-
-    return `
-      @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
-
-      *{
-        box-sizing:border-box;
-        
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-
-      :root{
-        --paper:${pw}mm;
-        --scale:${s};
-        --padX: calc(${extraCompact ? "1.5mm" : "2mm"} * var(--scale));
-        --padTop: calc(${extraCompact ? "1.5mm" : "2mm"} * var(--scale));
-        --padBottom: calc(${extraCompact ? "2.0mm" : "2.8mm"} * var(--scale));
-
-        --fsTitle: calc(${extraCompact ? "15" : "16"}px * var(--scale));
-        --fsLine:  calc(${extraCompact ? "10.4" : "11.2"}px * var(--scale));
-        --fsNote:  calc(${extraCompact ? "9.6" : "10.2"}px * var(--scale));
-
-        --fsField: calc(${extraCompact ? "10.4" : "11.2"}px * var(--scale));
-        --fsMeta:  calc(${extraCompact ? "10.2" : "11.0"}px * var(--scale));
-        --fsHead:  calc(${extraCompact ? "10.4" : "11.2"}px * var(--scale));
-        --fsRow:   calc(${extraCompact ? "10.4" : "11.2"}px * var(--scale));
-        --fsTot:   calc(${extraCompact ? "10.8" : "11.4"}px * var(--scale));
-        --fsFoot:  calc(${extraCompact ? "9.6" : "10.2"}px * var(--scale));
-        --fsThanks: calc(${extraCompact ? "10" : "11"}px * var(--scale));
-
-        --colSL:${colSL};
-        --colUnit:${colUnit};
-        --colQty:${colQty};
-        --colTotal:${colTotal};
-      }
-
-      .padRoot{
-        width: var(--paper);
-        max-width: var(--paper);
-        min-width: var(--paper);
-        margin:0;
-        background:#fff;
-        color:#000;
-        padding: var(--padTop) var(--padX) var(--padBottom) var(--padX);
-        line-height:1.28;
-        letter-spacing: .2px;
-        font-family:'Courier Prime','Courier New',monospace !important;
-      }
-
-      .padRoot *{ text-overflow:clip !important; }
-
-      /* ===== Header (Image style) ===== */
-      .posHeaderBlock{
-        text-align:center;
-        padding-top:.2mm;
-        padding-bottom:1.6mm;
-        border-bottom: 1px dashed #000;
-        margin-bottom: 1.6mm;
-      }
-      .posHeaderTitle{
-        font-size: var(--fsTitle);
-        letter-spacing: 1px;
-        margin-bottom: .7mm;
-      }
-      .posHeaderRow{
-        display:flex;
-        justify-content:space-between;
-        gap: 2mm;
-        font-size: var(--fsLine);
-        margin-top: .55mm;
-        text-align:left;
-      }
-      .posHeaderLeft, .posHeaderRight{ flex:1; }
-      .posHeaderRight{ text-align:right; }
-      .posHeaderNote{
-        margin-top: 1mm;
-        font-size: var(--fsNote);
-        font-weight: 400;
-      }
-
-      /* ===== Customer fields ===== */
-      .padFields{ margin-top: 1.2mm; }
-      .padFieldStack{ display:flex; flex-direction:column; }
-      .padFieldGroup{
-        display:grid;
-        grid-template-columns:${extraCompact ? "12mm" : "14mm"} 1fr;
-        align-items:center;
-        font-size: var(--fsField);
-        margin-bottom: .5mm;
-      }
-
-      /* ===== Meta ===== */
-      .posMeta{
-        margin-top: 1.4mm;
-        padding-top: 1.2mm;
-        border-top: 1px dashed #000;
-        font-size: var(--fsMeta);
-      }
-      .posMetaRow{
-        display:flex;
-        justify-content:space-between;
-        gap:2mm;
-        margin-top: .55mm;
-      }
-
-      /* ===== Table ===== */
-      .posTable{
-        margin-top: 1.6mm;
-        border-top: 1px dashed #000;
-        border-bottom: 1px dashed #000;
-      }
-      .posThead{
-        display:grid;
-        grid-template-columns: var(--colSL) 1fr var(--colUnit) var(--colQty) var(--colTotal);
-        gap: 1mm;
-        padding: 1mm 0;
-        font-size: var(--fsHead);
-      }
-      .posTrow{
-        display:grid;
-        grid-template-columns: var(--colSL) 1fr var(--colUnit) var(--colQty) var(--colTotal);
-        gap: 1mm;
-        padding: 1mm 0;
-        font-size: var(--fsRow);
-        font-weight: 400;
-        border-top: 1px dashed #000;
-        min-width:0;
-      }
-      .posSL{ text-align:left; }
-      .posName{ min-width:0; font-weight:400; }
-      .posUnit, .posQty{ text-align:right; font-weight:300; }
-      .posTotal{ text-align:right; }
-
-      /* ===== Totals ===== */
-      .posTotals{
-        margin-top: 1.8mm;
-        font-size: var(--fsTot);
-      }
-      .posTotRow{
-        display:flex;
-        justify-content:space-between;
-        gap: 2mm;
-        padding: .6mm 0;
-      }
-      .posTotDash{
-        border-top: 1px dashed #000;
-        margin: 1mm 0;
-      }
-      .posNet{
-        font-size: calc(var(--fsTot) * 1.06);
-      }
-
-      /* ===== Small list / footer ===== */
-      .posSectionTitle{
-        margin-top:1.6mm;
-        padding-top:1.2mm;
-        border-top:1px dashed #000;
-        font-size: var(--fsTot);
-        text-align:center;
-      }
-      .posSmallList{
-        margin-top:1mm;
-        font-size: var(--fsFoot);
-      }
-      .posSmallRow{
-        display:flex;
-        justify-content:space-between;
-        gap:2mm;
-        padding:.45mm 0;
-      }
-
-      .posFooter{
-        margin-top: 2mm;
-        padding-top: 1.2mm;
-        border-top: 1px dashed #000;
-        font-size: var(--fsFoot);
-        font-weight: 400;
-        text-align:center;
-      }
-      .posThanks{
-        margin-top: 1mm;
-        font-size: var(--fsThanks);
-        font-weight: 400;
-      }
-    `;
-  };
-
-  // =========================
-  // ✅ Print CSS builder (FULL)
-  // =========================
-  const buildPrintCss = (paperMm, printableMm, sc, xOffsetMm) => {
-    const w = Number(paperMm ?? 72);
-    const pw = Number(printableMm ?? w);
-    const xo = Number(xOffsetMm ?? 0);
-
-    return `
-      ${buildPosFontCss(pw, w, sc)}
-
-      html, body { margin:0; padding:0; background:#fff; overflow:hidden !important; }
-      html { width:${pw}mm !important; max-width:${pw}mm !important; }
-      body { width:${pw}mm !important; max-width:${pw}mm !important; }
-
-      @page { size: ${pw}mm auto; margin: 0mm; }
-
-      .printWrap{
-        width:${pw}mm !important;
-        max-width:${pw}mm !important;
-        margin:0 !important;
-        padding:0 !important;
-        background:#fff !important;
-        overflow:hidden !important;
-      }
-
-      /* print offset fix */
-      .padRoot{
-        transform: translateX(${xo}mm);
-      }
-    `;
-  };
-
-  // =========================
-  // ✅ Print
-  // =========================
-  const handlePrint = () => {
-    if (!receiptRef.current) return alert("Receipt not ready");
-
-    setIsPrinting(true);
-
-    const css = buildPrintCss(paperWidthMm, PRINTABLE_MM, scale, printXOffsetMm);
-    const receiptHtml = receiptRef.current.innerHTML;
-
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      setIsPrinting(false);
-      return alert("Please allow popups to print.");
-    }
-
-    const html = `
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Print</title>
-        <style>${css}</style>
-      </head>
-      <body>
-        <div class="printWrap">
-          <div class="padRoot">${receiptHtml}</div>
-        </div>
-
-        <script>
-          (function(){
-            try{
-              var W = "${PRINTABLE_MM}";
-              document.documentElement.style.width = W + "mm";
-              document.body.style.width = W + "mm";
-              document.body.style.maxWidth = W + "mm";
-
-              var wrap = document.querySelector(".printWrap");
-              if(wrap){
-                wrap.style.width = W + "mm";
-                wrap.style.maxWidth = W + "mm";
-              }
-              var root = document.querySelector(".padRoot");
-              if(root){
-                root.style.width = W + "mm";
-                root.style.maxWidth = W + "mm";
-                root.style.minWidth = W + "mm";
-              }
-            }catch(e){}
-
-            var imgs = Array.from(document.images || []);
-            function go(){ setTimeout(function(){ window.print(); }, 200); }
-            if(!imgs.length) return go();
-
-            var done = 0;
-            function finish(){ done++; if(done >= imgs.length) go(); }
-
-            imgs.forEach(function(img){
-              if(img.complete) return finish();
-              img.onload = finish;
-              img.onerror = finish;
-            });
-
-            setTimeout(go, 2500);
-          })();
-        </script>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-
-    setTimeout(() => setIsPrinting(false), 800);
-  };
-
-  const handleDownloadDesign2 = () => handlePrint();
-
-  // =========================
-  // ✅ POS Roll
-  // =========================
-  const PadRoll = () => {
-    return (
-      <div className={`padRoot ${isCompact ? "padCompact" : "padNormal"}`}>
-        <div ref={receiptRef}>
-          {/* ✅ HEADER (Image Style) */}
-          <div className="posHeaderBlock">
-            <div className="posHeaderTitle">RETAIL INVOICE</div>
-
-            <div className="posHeaderRow">
-              <div className="posHeaderLeft">
-                Cashier : {cashierName || "—"}
-                {hasValue(cashierId) ? ` (${cashierId})` : ""}
-              </div>
-              <div className="posHeaderRight">
-                Terminal ID : {terminalId || "—"}
-              </div>
-            </div>
-
-            <div className="posHeaderRow">
-              <div className="posHeaderLeft">
-                Invoice Number : {invoiceNumber || "—"}
-              </div>
-              <div className="posHeaderRight">Date : {invoiceDateEn}</div>
-            </div>
-
-            <div className="posHeaderRow" style={{ justifyContent: "flex-start" }}>
-              <div className="posHeaderLeft">
-                Customer ID : {customerId || "—"}
-              </div>
-              <div className="posHeaderRight"></div>
-            </div>
-
-            <div className="posHeaderNote">{loyaltyNote}</div>
-          </div>
-
-          {/* ✅ Name / Mobile */}
-          <div className="padFields">
-            <div className="padFieldStack">
-              <div className="padFieldGroup">
-                <div className="padLabelBox">নাম</div>
-                <div className="padInputLine">
-                  <span className="padInputText">{customerNamePos}</span>
-                </div>
-              </div>
-
-              <div className="padFieldGroup">
-                <div className="padLabelBox">মোবা</div>
-                <div className="padInputLine">
-                  <span className="padInputText">
-                    {customerPhonePos || "—"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ✅ POS Meta */}
-          <div className="posMeta">
-            <div className="posMetaRow">
-              <div className="posMetaLeft">
-                <span className="posMetaLabel">মেমো:</span>{" "}
-                <span className="posMetaMuted">{toBanglaDigit(memoNo)}</span>
-              </div>
-              <div className="posMetaRight">
-                <span className="posMetaLabel">তারিখ:</span>{" "}
-                <span className="posMetaMuted">{todayDateTimeBn}</span>
-              </div>
-            </div>
-
-            <div className="posMetaRow">
-              <div className="posMetaLeft">
-                <span className="posMetaLabel">ক্যাশিয়ার:</span>{" "}
-                <span className="posMetaMuted">{cashierName || "—"}</span>
-              </div>
-              <div className="posMetaRight"></div>
-            </div>
-          </div>
-
-          {/* ✅ Items Table */}
-          <div className="posTable">
-            <div className="posThead">
-              <div className="posCell posSL">SL</div>
-              <div className="posCell">Name</div>
-              <div className="posCell posUnit">Unit</div>
-              <div className="posCell posQty">Qty</div>
-              <div className="posCell posTotal">Total</div>
-            </div>
-
-            {lineRows.length ? (
-              lineRows.map((r, idx) => (
-                <div key={idx} className="posTrow">
-                  <div className="posCell posSL">{toBanglaDigit(idx + 1)}</div>
-                  <div className="posCell posName" title={r.name}>
-                    <div>{r.name}</div>
-
-                    {Array.isArray(r.identifiers) && r.identifiers.length > 0 && (
-                      <div style={{ marginTop: "1mm", fontSize: "9px", lineHeight: "1.25" }}>
-                        {r.identifiers.map((identifier, idx) => (
-                          <div key={identifier.id || idx}>
-                            <span style={{ fontWeight: 700, textTransform: "uppercase" }}>
-                              {identifier.identifier_type}:
-                            </span>{" "}
-                            <span>{identifier.identifier_value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="posCell posUnit">
-                    {formatMoneyBn(r.unitPrice)}
-                  </div>
-                  <div className="posCell posQty">
-                    {toBanglaDigit(r.qty)}
-                    {r.unitName ? ` ${r.unitName}` : ""}
-                  </div>
-                  <div className="posCell posTotal">
-                    {formatMoneyBn(r.total)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="posTrow">
-                <div className="posCell posSL">{toBanglaDigit(1)}</div>
-                <div className="posCell posName">কোনো আইটেম নেই</div>
-                <div className="posCell posUnit">{formatMoneyBn(0)}</div>
-                <div className="posCell posQty">{toBanglaDigit(0)}</div>
-                <div className="posCell posTotal">{formatMoneyBn(0)}</div>
-              </div>
-            )}
-          </div>
-
-          {/* ✅ Totals */}
-          <div className="posTotals">
-            <div className="posTotRow">
-              <div className="posTotLabel">Sub Total :</div>
-              <div className="posTotValue">{formatMoneyBn(posSubTotal)}</div>
-            </div>
-
-            {discountInfo.has ? (
-              <div className="posTotRow">
-                <div className="posTotLabel">(-) Discount :</div>
-                <div className="posTotValue">
-                  {discountInfo.isPercent
-                    ? `${discountInfo.text}  (${formatMoneyBn(discountAmount)})`
-                    : formatMoneyBn(discountAmount)}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="posTotRow">
-              <div className="posTotLabel"></div>
-              <div className="posTotValue">
-                {formatMoneyBn(totalAfterDiscount)}
-              </div>
-            </div>
-
-            <div className="posTotDash" />
-
-            <div className="posTotRow">
-              <div className="posTotLabel">(±) Rounding :</div>
-              <div className="posTotValue">{formatMoneyBn(rounding)}</div>
-            </div>
-
-            <div className="posTotRow posNet">
-              <div className="posTotLabel">Net Payable :</div>
-              <div className="posTotValue">{formatMoneyBn(netPayable)}</div>
-            </div>
-
-            <div className="posTotDash" />
-
-            <div className="posTotRow">
-              <div className="posTotLabel">Cash Paid :</div>
-              <div className="posTotValue">{formatMoneyBn(cashPaid)}</div>
-            </div>
-
-            <div className="posTotRow">
-              <div className="posTotLabel">Change Amount :</div>
-              <div className="posTotValue">{formatMoneyBn(changeAmount)}</div>
-            </div>
-          </div>
-
-          {/* ✅ Discount items */}
-          {discountItems?.length ? (
-            <>
-              <div className="posSectionTitle">** DISCOUNT ITEMS **</div>
-              <div className="posSmallList">
-                {discountItems.map((d, i) => (
-                  <div key={i} className="posSmallRow">
-                    <div className="posSmallName">
-                      {toBanglaDigit(i + 1)}. {d.name}
-                    </div>
-                    <div>{formatMoneyBn(d.amount)}</div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : null}
-
-          {/* ✅ Total savings */}
-          {totalSavings > 0 ? (
-            <div className="posFooter" style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 700 }}>
-                Total savings TK. : {formatMoneyBn(totalSavings)}
-              </div>
-            </div>
-          ) : null}
-
-          {/* ✅ Loyalty points */}
-          {loyalty ? (
-            <div className="posFooter" style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 700, marginBottom: "0.8mm" }}>
-                Loyalty Points ({new Date().toLocaleDateString("en-GB")}):
-              </div>
-              <div className="posSmallRow">
-                <div>Previous Points :</div>
-                <div>{toBanglaDigit(loyalty.prev)}</div>
-              </div>
-              <div className="posSmallRow">
-                <div>This Invoice :</div>
-                <div>{toBanglaDigit(loyalty.earned)}</div>
-              </div>
-              <div className="posSmallRow" style={{ fontWeight: 700 }}>
-                <div>Balance Points :</div>
-                <div>{toBanglaDigit(loyalty.balance)}</div>
-              </div>
-            </div>
-          ) : null}
-
-          {/* ✅ Footer */}
-          <div className="posFooter">
-            <div>Prices inclusive of VAT (if applicable)</div>
-            {hasValue(sale?.vat_payable) ? (
-              <div style={{ fontWeight: 700 }}>
-                VAT Payable TK. {formatMoneyBn(sale.vat_payable)}
-              </div>
-            ) : null}
-            <div style={{ marginTop: "0.8mm" }}>Thank you for shopping</div>
-            <div className="posThanks">ধন্যবাদ আবার আসবেন</div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // =========================
-  // ✅ Main UI (Preview)
-  // =========================
-  const InvoiceDesign2 = () => {
-    const PAPER_MM = Number(paperWidthMm ?? 72);
-    const extraCompact = PAPER_MM <= 40;
-
-    // ✅ Use SAME font css in preview
-    const previewCss = `
-      :root{ --paper:${PAPER_MM}mm; }
-      ${buildPosFontCss(PAPER_MM, PAPER_MM, scale)}
-      .pos-preview{
-        background:#fff;
-        border:1px solid #e5e7eb;
-        border-radius:10px;
-        padding:12px;
-        width: fit-content;
-        margin: 0 auto;
-        box-shadow:0 1px 2px rgba(0,0,0,.04);
-      }
-      /* preview doesn't need print offsets */
-      .padRoot{ transform:none !important; }
-    `;
+
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(toNum(amount));
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return "";
+
+        const date = new Date(dateString);
+
+        return date.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+        });
+    };
+
+    const formatDateTimeForInvoice = (dateString) => {
+        if (!dateString) return { datePart: "", timePart: "" };
+
+        const date = new Date(dateString);
+
+        const datePart = date.toLocaleDateString("en-US", {
+            month: "long",
+            day: "2-digit",
+            year: "numeric",
+        });
+
+        const timePart = date.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+        });
+
+        return {
+            datePart,
+            timePart,
+        };
+    };
+
+    const capitalizeText = (value) => {
+        if (!value) return "";
+        return String(value)
+            .replace(/_/g, " ")
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    };
+
+    const getCustomerName = () => {
+        return (
+            sale?.customer?.customer_name ||
+            sale?.customer?.name ||
+            sale?.customer_name ||
+            "Walk-In-Customer"
+        );
+    };
+
+    const getCustomerNumber = () => {
+        return (
+            sale?.customer?.phone ||
+            sale?.customer?.mobile ||
+            sale?.phone ||
+            sale?.customer_phone ||
+            ""
+        );
+    };
+
+    const getCustomerAddress = () => {
+        return (
+            sale?.customer?.address ||
+            sale?.customer?.customer_address ||
+            sale?.customer_address ||
+            ""
+        );
+    };
+
+    const getPaymentMethod = () => {
+        return capitalizeText(
+            sale?.payment_type ||
+            sale?.payment_method ||
+            sale?.payments?.[0]?.payment_type ||
+            "Cash"
+        );
+    };
+
+    const getProductDisplayName = (item) => {
+        if (item?.item_type === "pickup") {
+            return item?.product_name || item?.name || "Pickup Item";
+        }
+
+        return (
+            item?.product?.name ||
+            item?.product_name ||
+            item?.name ||
+            item?.description ||
+            "N/A"
+        );
+    };
+
+    const getVariantDisplayName = (item) => {
+        if (
+            item?.variant?.attribute_values &&
+            typeof item.variant.attribute_values === "object"
+        ) {
+            return Object.values(item.variant.attribute_values)
+                .filter(Boolean)
+                .join(", ");
+        }
+
+        return (
+            item?.variant?.attribute_values ||
+            item?.variant_name ||
+            item?.variant?.name ||
+            ""
+        );
+    };
+
+    const getBrandName = (item) => {
+        return (
+            item?.product?.brand?.name ||
+            item?.brand?.name ||
+            item?.product?.brand ||
+            item?.brand_name ||
+            ""
+        );
+    };
+
+    const getItemIdentifiers = (item) => {
+        if (Array.isArray(item?.identifiers)) {
+            return item.identifiers;
+        }
+
+        if (item?.stock?.identifiers && Array.isArray(item.stock.identifiers)) {
+            return item.stock.identifiers;
+        }
+
+        return [];
+    };
+
+    const getItemExtraDetails = (item) => {
+        const details = [];
+
+        const variant = getVariantDisplayName(item);
+        const brand = getBrandName(item);
+
+        if (variant) {
+            details.push(`Variant- ${variant}`);
+        }
+
+        if (brand) {
+            details.push(`Brand- ${brand}`);
+        }
+
+        if (item?.battery_health) {
+            details.push(`Battery Health- ${item.battery_health}`);
+        }
+
+        const identifiers = getItemIdentifiers(item);
+
+        identifiers.forEach((identifier) => {
+            if (identifier?.identifier_type && identifier?.identifier_value) {
+                details.push(
+                    `${String(identifier.identifier_type).toUpperCase()} : ${identifier.identifier_value}`
+                );
+            }
+        });
+
+        return details.join(", ");
+    };
+
+    const getAddAmount = (item) => {
+        return toNum(item?.add_amount || item?.vat_amount || item?.tax_amount || 0);
+    };
+
+    const rowTotal = (item) => {
+        const backendTotal = toNum(item?.total_price || item?.total || item?.subtotal || item?.amount || 0);
+
+        if (backendTotal > 0) {
+            return backendTotal;
+        }
+
+        const qty = toNum(item?.quantity || item?.qty || 0);
+        const unitPrice = toNum(item?.unit_price || item?.price || item?.selling_price || item?.rate || 0);
+
+        return qty * unitPrice + getAddAmount(item);
+    };
+
+    const invoiceDateTime = useMemo(() => {
+        return formatDateTimeForInvoice(sale?.sale_date || sale?.created_at);
+    }, [sale]);
+
+    const subTotal = useMemo(() => {
+        if (sale?.sub_total !== null && sale?.sub_total !== undefined) {
+            return toNum(sale.sub_total);
+        }
+
+        if (sale?.subtotal !== null && sale?.subtotal !== undefined) {
+            return toNum(sale.subtotal);
+        }
+
+        return items.reduce((total, item) => total + rowTotal(item), 0);
+    }, [sale, items]);
+
+    const discountAmount = useMemo(() => {
+        const discount = toNum(sale?.discount);
+
+        if (!discount) return 0;
+
+        if (sale?.discount_type === "flat_discount" || sale?.discount_type === "flat") {
+            return discount;
+        }
+
+        return (subTotal * discount) / 100;
+    }, [sale, subTotal]);
+
+    const vatAmount = useMemo(() => {
+        if (sale?.vat_amount !== null && sale?.vat_amount !== undefined) {
+            return toNum(sale.vat_amount);
+        }
+
+        if (sale?.tax_amount !== null && sale?.tax_amount !== undefined) {
+            return toNum(sale.tax_amount);
+        }
+
+        return 0;
+    }, [sale]);
+
+    const grandTotal = useMemo(() => {
+        if (sale?.grand_total !== null && sale?.grand_total !== undefined) {
+            return toNum(sale.grand_total);
+        }
+
+        if (sale?.net_payable !== null && sale?.net_payable !== undefined) {
+            return toNum(sale.net_payable);
+        }
+
+        return subTotal - discountAmount + vatAmount;
+    }, [sale, subTotal, discountAmount, vatAmount]);
+
+    const paidAmount = useMemo(() => {
+        return toNum(sale?.paid_amount || sale?.cash_paid || sale?.payment?.amount || 0);
+    }, [sale]);
+
+    const dueAmount = useMemo(() => {
+        if (sale?.due_amount !== null && sale?.due_amount !== undefined) {
+            return toNum(sale.due_amount);
+        }
+
+        return Math.max(grandTotal - paidAmount, 0);
+    }, [sale, grandTotal, paidAmount]);
+
+    const customerGivenAmount = useMemo(() => {
+        if (sale?.customer_given_amount !== null && sale?.customer_given_amount !== undefined) {
+            return toNum(sale.customer_given_amount);
+        }
+
+        if (sale?.cash_paid !== null && sale?.cash_paid !== undefined) {
+            return toNum(sale.cash_paid);
+        }
+
+        return 0;
+    }, [sale]);
+
+    const returnAmount = useMemo(() => {
+        if (sale?.return_amount !== null && sale?.return_amount !== undefined) {
+            return toNum(sale.return_amount);
+        }
+
+        const change = customerGivenAmount - grandTotal;
+        return change > 0 ? change : 0;
+    }, [sale, customerGivenAmount, grandTotal]);
+
+    const warrantyPolicyLines = [
+        {
+            type: "paragraph",
+            text: `For all devices with official brand warranty, customers will receive all warranty services according to the respective brand’s own warranty policy. Customers can claim warranty services from the brand’s official customer care center by presenting the purchase invoice provided by ${brandPolicyName}.`,
+        },
+        {
+            type: "paragraph-bold",
+            text: `For devices covered under ${brandPolicyName} warranty, customers will receive the following after-sales services:`,
+        },
+        {
+            type: "heading",
+            text: "20 Days Replacement Warranty",
+        },
+        {
+            type: "bullet",
+            text: "A 20-day replacement warranty is provided from the date of purchase for any device-related issue.",
+        },
+        {
+            type: "bullet",
+            text: "If the phone becomes completely dead within this period, the replacement process may take 15–90 working days.",
+        },
+        {
+            type: "bullet",
+            text: "No replacement warranty will be applicable for software-related issues.",
+        },
+        {
+            type: "bullet",
+            text: `All issues must be visibly demonstrated in front of ${brandPolicyName} authorities.`,
+        },
+        {
+            type: "bullet",
+            text: "Replacement warranty is applicable only once.",
+        },
+        {
+            type: "bullet",
+            text: "For replacement eligibility, the device, box, and all accessories must remain intact and undamaged.",
+        },
+        {
+            type: "bullet",
+            text: "Devices with any scratches or dents will not qualify for replacement warranty.",
+        },
+        {
+            type: "heading",
+            text: "02 Years’ Service Warranty",
+        },
+        {
+            type: "bullet",
+            text: "After the 20-day replacement warranty period, a 2-year service warranty will be applicable.",
+        },
+        {
+            type: "bullet",
+            text: "If the device can be repaired through servicing without replacing any parts, no service charge will be applied.",
+        },
+        {
+            type: "bullet",
+            text: "If any parts need to be replaced, the customer must bear the cost of those parts.",
+        },
+        {
+            type: "bullet",
+            text: "Service duration will depend on the availability of parts in the market.",
+        },
+        {
+            type: "heading",
+            text: "Important Terms & Conditions",
+        },
+        {
+            type: "bullet",
+            text: "Customers are requested to check the active/inactive status and all visible conditions (scratches, cracks, dust, color issues, etc.) before leaving the outlet, as these will not be covered under warranty afterward.",
+        },
+        {
+            type: "bullet",
+            text: "Warranty is not applicable for charging cables, adapters, or any accessories provided inside the box.",
+        },
+        {
+            type: "bullet",
+            text: `If the purchased device is not preferred, customers may exchange it according to ${brandPolicyName}’s exchange policy.`,
+        },
+        {
+            type: "bullet",
+            text: "If a customer wants to sell or exchange the device within 20 days, 20% of the purchase value will be deducted.",
+        },
+        {
+            type: "bullet",
+            text: "Warranty will be considered void if the device is damaged due to accidents, misuse, fire, water damage, voltage fluctuation, lightning, forceful opening, or any external causes.",
+        },
+        {
+            type: "bullet",
+            text: `Devices exposed to liquid/water or serviced previously outside ${brandPolicyName} will not be covered under warranty policy.`,
+        },
+        {
+            type: "bullet",
+            text: "Any manufacturing defect must be reported within 24 hours of purchase or receiving the product from courier service.",
+        },
+        {
+            type: "bullet",
+            text: `According to ${brandPolicyName} policy, customers may receive 7 days / 3 months / 6 months / 12 months / 18 months / 24 months warranty depending on the product.`,
+        },
+        {
+            type: "bullet",
+            text: "Warranty claim processing for sold products may require 15–40 working days.",
+        },
+        {
+            type: "bullet",
+            text: "For products received through courier or home delivery, an unboxing video is mandatory for warranty claims.",
+        },
+        {
+            type: "bullet",
+            text: "Product box and invoice/memo are mandatory for claiming warranty.",
+        },
+        {
+            type: "bullet",
+            text: "Customers are advised to check whether the phone is blacklisted before purchase.",
+        },
+        {
+            type: "bullet",
+            text: `Phones from the USA Sales Region may later become blacklisted; therefore, purchasing such phones is entirely at the customer’s own risk, and ${brandPolicyName} discourages customers from purchasing them.`,
+        },
+        {
+            type: "bullet",
+            text: `${brandPolicyName} authority will not bear any responsibility if the phone becomes blacklisted in the future.`,
+        },
+    ];
+
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const handleDownloadPDF = () => {
+        window.print();
+    };
 
     return (
-      <div className="bg-gray-50 min-h-screen p-4">
-        <style>{previewCss}</style>
+        <div className="min-h-screen bg-gray-100">
+            <style>{`
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 0;
+                    }
 
-        {/* Header + actions */}
-        <div className="mb-4 bg-white p-4 rounded-lg shadow-sm no-print">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <button
-                  type="button"
-                  onClick={() => router.visit(route("sales.index"))}
-                  className="btn btn-ghost btn-sm btn-circle"
-                >
-                  <ArrowLeft size={16} />
-                </button>
-                <h1 className="text-xl font-bold text-gray-800">
-                  Sale Invoice (RP/XP Roll Print)
-                </h1>
-              </div>
+                    html,
+                    body {
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: hidden !important;
+                        background: #ffffff !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
 
-              <div className="text-sm text-gray-600">
-                মেমো:{" "}
-                <span className="font-semibold">{toBanglaDigit(memoNo)}</span> •
-                সময়: <span className="font-semibold">{todayDateTimeBn}</span>
-                {isShadowUser && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">
-                    Shadow
-                  </span>
-                )}
-              </div>
+                    body * {
+                        visibility: hidden !important;
+                    }
 
-              <div className="mt-1 text-xs text-gray-500">
-                ✅ Scale <b>100%</b> • Fit/Shrink <b>OFF</b> • Paper:{" "}
-                <b style={{ color: PRIMARY }}>{paperWidthMm}mm</b> • Print uses:{" "}
-                <b style={{ color: PRIMARY }}>{PRINTABLE_MM}mm</b>{" "}
-                {paperWidthMm > PRINTABLE_MM ? (
-                  <span className="ml-2 text-[11px] font-bold text-red-500">
-                    (Printer cap {PRINTER_MAX_MM}mm → NO RIGHT GAP)
-                  </span>
-                ) : null}
-              </div>
-            </div>
+                    #variantInvoicePrintArea,
+                    #variantInvoicePrintArea * {
+                        visibility: visible !important;
+                    }
 
-            {/* controls */}
-            <div className="flex flex-col gap-2 min-w-[260px]">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-bold text-gray-600">Paper Width</div>
-                <div className="text-xs font-black" style={{ color: PRIMARY }}>
-                  {paperWidthMm}mm
-                </div>
-              </div>
+                    #variantInvoicePrintArea {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        min-height: 297mm !important;
+                        max-height: 297mm !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: hidden !important;
+                        box-shadow: none !important;
+                        border: none !important;
+                        background: #ffffff !important;
+                    }
 
-              <input
-                type="range"
-                min="30"
-                max="100"
-                step="1"
-                value={paperWidthMm}
-                onChange={(e) =>
-                  setPaperWidthMm(clamp(Number(e.target.value), 30, 100))
+                    .no-print {
+                        display: none !important;
+                    }
+
+                    .variant-invoice-paper {
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        min-height: 297mm !important;
+                        max-height: 297mm !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        overflow: hidden !important;
+                        background: #ffffff !important;
+                    }
+
+                    .variant-print-scale {
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        transform: scale(0.94) !important;
+                        transform-origin: top center !important;
+                    }
+
+                    .variant-invoice-inner {
+                        width: 210mm !important;
+                        margin-left: auto !important;
+                        margin-right: auto !important;
+                        padding-top: 8mm !important;
+                        padding-bottom: 0 !important;
+                        font-family: "Times New Roman", Times, serif !important;
+                        color: #000000 !important;
+                        overflow: visible !important;
+                    }
+
+                    .variant-header {
+                        min-height: 27mm !important;
+                    }
+
+                    .variant-logo-wrap {
+                        height: 25mm !important;
+                    }
+
+                    .variant-logo {
+                        width: 56mm !important;
+                        max-height: 20mm !important;
+                        object-fit: contain !important;
+                        object-position: left top !important;
+                        margin-bottom: 11px !important;
+                    }
+
+                    .variant-business-info {
+                        font-size: 12px !important;
+                        line-height: 1.05 !important;
+                    }
+
+                    .variant-invoice-title {
+                        font-size: 26px !important;
+                        line-height: 1 !important;
+                    }
+
+                    .variant-customer-row {
+                        font-size: 14px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .variant-items-section {
+                        margin-top: 4mm !important;
+                        padding-top: 2mm !important;
+                    }
+
+                    .variant-all-items {
+                        min-height: 29mm !important;
+                        max-height: 35mm !important;
+                        overflow: hidden !important;
+                    }
+
+                    .variant-item-line {
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        font-size: 14px !important;
+                        line-height: 1.6 !important;
+                        margin-bottom: 1.2mm !important;
+                        font-weight: 700 !important;
+                    }
+
+                    .variant-summary-section {
+                        margin-top: 4mm !important;
+                    }
+
+                    .variant-summary-main {
+                        font-size: 14px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .variant-summary-extra {
+                        font-size: 12px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .variant-payment-row {
+                        margin-top: 4mm !important;
+                        font-size: 14px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .variant-warranty-section {
+                        margin-top: 5mm !important;
+                        padding-top: 2mm !important;
+                    }
+
+                    .variant-warranty-title {
+                        font-size: 18px !important;
+                        line-height: 1 !important;
+                        margin-bottom: 1mm !important;
+                    }
+
+                    .variant-warranty-text {
+                        font-size: 12px !important;
+                        line-height: 1.08 !important;
+                    }
+
+                    .variant-warranty-heading {
+                        margin-top: 0.7mm !important;
+                        margin-left: 7mm !important;
+                    }
+
+                    .variant-warranty-bullet {
+                        display: grid !important;
+                        grid-template-columns: 5mm 1fr !important;
+                        margin-left: 7mm !important;
+                    }
+
+                    .variant-warranty-bullet-dot {
+                        font-size: 14px !important;
+                        line-height: 9px !important;
+                    }
+
+                    .variant-confirm-text {
+                        margin-top: 3mm !important;
+                        font-size: 12px !important;
+                        line-height: 1.05 !important;
+                    }
+
+                    .variant-signature-section {
+                        margin-top: 6mm !important;
+                    }
+
+                    .variant-signature-box {
+                        font-size: 15px !important;
+                    }
                 }
-                className="range range-primary"
-              />
+            `}</style>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-xs"
-                  onClick={() => setPaperWidthMm(72)}
-                  style={{ background: PRIMARY, color: "#fff" }}
-                >
-                  72mm (Default)
-                </button>
+            <div className="no-print bg-white border-b border-gray-200 px-4 py-3">
+                <div className="max-w-[900px] mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h1 className="text-lg font-bold text-gray-900">
+                            Invoice: {sale?.invoice_no || sale?.sale_no || sale?.id}
+                        </h1>
+                        <p className="text-sm text-gray-500">
+                            Date: {formatDate(sale?.sale_date || sale?.created_at)}
+                        </p>
+                    </div>
 
-                <button
-                  type="button"
-                  className="btn btn-xs btn-outline"
-                  onClick={() => setPaperWidthMm(58)}
-                  style={{ borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  58mm
-                </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => router.visit(route("sales.index"))}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                            <ArrowLeft size={16} />
+                            Back
+                        </button>
 
-                <button
-                  type="button"
-                  className="btn btn-xs btn-outline"
-                  onClick={() => setPaperWidthMm(80)}
-                  style={{ borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  80mm
-                </button>
-              </div>
+                        <button
+                            type="button"
+                            onClick={handlePrint}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-900 text-white text-sm font-semibold hover:bg-black"
+                        >
+                            <Printer size={16} />
+                            Print
+                        </button>
 
-              <div className="flex flex-wrap gap-2 mt-1">
-                <button
-                  onClick={handlePrint}
-                  className="btn btn-sm text-white"
-                  style={{ background: PRIMARY }}
-                  disabled={isPrinting}
-                >
-                  <Printer size={16} className="mr-1" />
-                  Print
-                  {isPrinting && (
-                    <span className="loading loading-spinner loading-xs ml-2"></span>
-                  )}
-                </button>
-
-                <button
-                  onClick={handleDownloadDesign2}
-                  className="btn btn-sm btn-outline"
-                  disabled={isPrinting}
-                  style={{ borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  <Download size={16} className="mr-1" />
-                  Save PDF
-                  {isPrinting && (
-                    <span className="loading loading-spinner loading-xs ml-2"></span>
-                  )}
-                </button>
-              </div>
-
-              {extraCompact ? (
-                <div className="text-[11px] text-gray-500">
-                  Compact mode (≤ 40mm) auto-adjusted.
+                        <button
+                            type="button"
+                            onClick={handleDownloadPDF}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-700 text-white text-sm font-semibold hover:bg-gray-800"
+                        >
+                            <Download size={16} />
+                            PDF
+                        </button>
+                    </div>
                 </div>
-              ) : null}
             </div>
-          </div>
-        </div>
 
-        {/* Preview */}
-        <div className="pos-preview no-print">
-          <PadRoll />
+            <div className="py-5 px-3">
+                <div
+                    id="variantInvoicePrintArea"
+                    className="variant-invoice-paper bg-white mx-auto shadow-sm border border-gray-200"
+                    style={{
+                        minHeight: "297mm",
+                    }}
+                >
+                    <div className="variant-print-scale">
+                        <div
+                            className="variant-invoice-inner"
+                            style={{
+                                width: "210mm",
+                                marginLeft: "auto",
+                                marginRight: "auto",
+                                paddingTop: "8mm",
+                                paddingBottom: "0",
+                                fontFamily: `"Times New Roman", Times, serif`,
+                                color: "#000000",
+                            }}
+                        >
+                            <div
+                                className="variant-header flex items-start justify-between"
+                                style={{
+                                    minHeight: "27mm",
+                                }}
+                            >
+                                <div>
+                                    <div
+                                        className="variant-logo-wrap"
+                                        style={{
+                                            height: "25mm",
+                                            display: "flex",
+                                            alignItems: "flex-start",
+                                        }}
+                                    >
+                                        {businessLogo ? (
+                                            <img
+                                                src={businessLogo}
+                                                alt={businessName || "Business Logo"}
+                                                className="variant-logo"
+                                                style={{
+                                                    width: "56mm",
+                                                    maxHeight: "20mm",
+                                                    objectFit: "contain",
+                                                    objectPosition: "left top",
+                                                    marginBottom: "11px",
+                                                }}
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = "none";
+                                                }}
+                                            />
+                                        ) : businessName ? (
+                                            <div
+                                                style={{
+                                                    fontSize: "22px",
+                                                    fontWeight: "700",
+                                                    lineHeight: "1",
+                                                }}
+                                            >
+                                                {businessName}
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <div
+                                        className="variant-business-info"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.05",
+                                        }}
+                                    >
+                                        {businessAddress ? (
+                                            <div className="whitespace-pre-line">
+                                                {businessAddress}
+                                            </div>
+                                        ) : null}
+
+                                        {(businessPhone || businessSecondPhone) ? (
+                                            <div>
+                                                Mobile: {businessPhone}
+                                                {businessSecondPhone ? `, ${businessSecondPhone}` : ""}
+                                            </div>
+                                        ) : null}
+
+                                        {businessEmail ? (
+                                            <div>
+                                                Email:{" "}
+                                                <span style={{ textDecoration: "underline" }}>
+                                                    {businessEmail}
+                                                </span>
+                                            </div>
+                                        ) : null}
+
+                                        {businessWebsite ? (
+                                            <div>
+                                                Website:{" "}
+                                                <span style={{ textDecoration: "underline" }}>
+                                                    {businessWebsite}
+                                                </span>
+                                            </div>
+                                        ) : null}
+
+                                        {businessFacebook ? (
+                                            <div>
+                                                Facebook: {businessFacebook}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                <div
+                                    className="variant-invoice-title"
+                                    style={{
+                                        fontSize: "26px",
+                                        fontWeight: "700",
+                                        lineHeight: "1",
+                                        paddingTop: "2mm",
+                                        letterSpacing: "0.5px",
+                                    }}
+                                >
+                                    INVOICE
+                                </div>
+                            </div>
+
+                            <div
+                                className="variant-customer-row"
+                                style={{
+                                    borderTop: "2px solid #000",
+                                    marginTop: "0mm",
+                                    paddingTop: "1mm",
+                                    fontSize: "14px",
+                                    fontWeight: "700",
+                                    lineHeight: "1.1",
+                                }}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        Name : {getCustomerName()}
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            minWidth: "49mm",
+                                            textAlign: "right",
+                                        }}
+                                    >
+                                        {invoiceDateTime?.datePart}{" "}
+                                        <span style={{ marginLeft: "5mm" }}>
+                                            {invoiceDateTime?.timePart}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    Number : {getCustomerNumber()}
+                                </div>
+
+                                {getCustomerAddress() ? (
+                                    <div>
+                                        Address : {getCustomerAddress()}
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div
+                                className="variant-items-section"
+                                style={{
+                                    borderTop: "2px solid #000",
+                                    marginTop: "4mm",
+                                    paddingTop: "2mm",
+                                }}
+                            >
+                                <div
+                                    className="variant-all-items"
+                                    style={{
+                                        minHeight: "29mm",
+                                        maxHeight: "35mm",
+                                        overflow: "hidden",
+                                    }}
+                                >
+                                    {items.length > 0 ? (
+                                        items.map((item, index) => {
+                                            const extraDetails = getItemExtraDetails(item);
+
+                                            return (
+                                                <div
+                                                    key={item?.id || index}
+                                                    className="variant-item-line flex items-start justify-between"
+                                                    style={{
+                                                        fontSize: "14px",
+                                                        lineHeight: "1.6",
+                                                        marginBottom: "1.2mm",
+                                                        fontWeight: "700",
+                                                    }}
+                                                >
+                                                    <div style={{ paddingRight: "8mm" }}>
+                                                        <div>
+                                                            {getProductDisplayName(item)}
+                                                            {toNum(item?.quantity || item?.qty || 0) > 1
+                                                                ? ` x ${toNum(item?.quantity || item?.qty || 0)}`
+                                                                : ""}
+                                                            {extraDetails ? ` ${extraDetails}` : ""}
+                                                        </div>
+                                                    </div>
+
+                                                    <div
+                                                        className="flex items-start justify-between"
+                                                        style={{
+                                                            minWidth: "31mm",
+                                                        }}
+                                                    >
+                                                        <span style={{ fontWeight: "700" }}>
+                                                            BDT
+                                                        </span>
+                                                        <span style={{ fontWeight: "700" }}>
+                                                            {formatCurrency(rowTotal(item))}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <div
+                                            style={{
+                                                fontSize: "14px",
+                                                color: "#555",
+                                            }}
+                                        >
+                                            No items found
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div
+                                className="variant-summary-section"
+                                style={{
+                                    borderTop: "1px solid #000",
+                                    marginTop: "4mm",
+                                    paddingTop: "0",
+                                }}
+                            >
+                                <div
+                                    className="variant-summary-main flex items-center justify-end"
+                                    style={{
+                                        fontSize: "14px",
+                                        lineHeight: "1.1",
+                                        fontWeight: "400",
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            minWidth: "34mm",
+                                            textAlign: "left",
+                                        }}
+                                    >
+                                        Sub Total
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            minWidth: "17mm",
+                                            textAlign: "left",
+                                            fontWeight: "700",
+                                        }}
+                                    >
+                                        BDT
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            minWidth: "25mm",
+                                            textAlign: "right",
+                                            fontWeight: "700",
+                                        }}
+                                    >
+                                        {formatCurrency(subTotal)}
+                                    </div>
+                                </div>
+
+                                {discountAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "34mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Discount
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "17mm",
+                                                textAlign: "left",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            BDT
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "25mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            {formatCurrency(discountAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {vatAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "34mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            VAT / Tax
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "17mm",
+                                                textAlign: "left",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            BDT
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "25mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            {formatCurrency(vatAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {grandTotal !== subTotal ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                            fontWeight: "700",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "34mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Grand Total
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "17mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            BDT
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "25mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            {formatCurrency(grandTotal)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <div
+                                    className="variant-payment-row flex items-center justify-end"
+                                    style={{
+                                        fontSize: "14px",
+                                        lineHeight: "1.1",
+                                        fontWeight: "700",
+                                        marginTop: "4mm",
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            minWidth: "54mm",
+                                            textAlign: "left",
+                                        }}
+                                    >
+                                        Payment Method
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            minWidth: "33mm",
+                                            textAlign: "center",
+                                        }}
+                                    >
+                                        {getPaymentMethod()}
+                                    </div>
+                                </div>
+
+                                {paidAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "54mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Paid Amount
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "33mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            BDT {formatCurrency(paidAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {dueAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "54mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Due Amount
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "33mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            BDT {formatCurrency(dueAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {customerGivenAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "54mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Customer Given
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "33mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            BDT {formatCurrency(customerGivenAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {returnAmount > 0 ? (
+                                    <div
+                                        className="variant-summary-extra flex items-center justify-end"
+                                        style={{
+                                            fontSize: "12px",
+                                            lineHeight: "1.1",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                minWidth: "54mm",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            Return Amount
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                minWidth: "33mm",
+                                                textAlign: "right",
+                                            }}
+                                        >
+                                            BDT {formatCurrency(returnAmount)}
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div
+                                className="variant-warranty-section"
+                                style={{
+                                    borderTop: "3px solid #000",
+                                    marginTop: "5mm",
+                                    paddingTop: "2mm",
+                                }}
+                            >
+                                <div
+                                    className="variant-warranty-text"
+                                    style={{
+                                        fontSize: "12px",
+                                        lineHeight: "1.08",
+                                    }}
+                                >
+                                    <div
+                                        className="variant-warranty-title"
+                                        style={{
+                                            textAlign: "center",
+                                            fontSize: "18px",
+                                            lineHeight: "1",
+                                            fontWeight: "700",
+                                            textDecoration: "underline",
+                                            marginBottom: "1mm",
+                                        }}
+                                    >
+                                        WARRANTY POLICY
+                                    </div>
+
+                                    {warrantyPolicyLines.map((line, index) => {
+                                        if (line.type === "heading") {
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className="variant-warranty-heading"
+                                                    style={{
+                                                        fontWeight: "700",
+                                                        textDecoration: "underline",
+                                                        marginTop: "0.7mm",
+                                                        marginLeft: "7mm",
+                                                    }}
+                                                >
+                                                    {line.text}
+                                                </div>
+                                            );
+                                        }
+
+                                        if (line.type === "bullet") {
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className="variant-warranty-bullet"
+                                                    style={{
+                                                        display: "grid",
+                                                        gridTemplateColumns: "5mm 1fr",
+                                                        marginLeft: "7mm",
+                                                    }}
+                                                >
+                                                    <span
+                                                        className="variant-warranty-bullet-dot"
+                                                        style={{
+                                                            fontSize: "14px",
+                                                            lineHeight: "9px",
+                                                        }}
+                                                    >
+                                                        •
+                                                    </span>
+                                                    <span>
+                                                        {line.text}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (line.type === "paragraph-bold") {
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    style={{
+                                                        fontWeight: "700",
+                                                        marginTop: "0.7mm",
+                                                        marginLeft: "7mm",
+                                                    }}
+                                                >
+                                                    {line.text}
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div
+                                                key={index}
+                                                style={{
+                                                    marginBottom: "0.7mm",
+                                                }}
+                                            >
+                                                {line.text}
+                                            </div>
+                                        );
+                                    })}
+
+                                    <div
+                                        className="variant-confirm-text"
+                                        style={{
+                                            marginTop: "3mm",
+                                            textAlign: "center",
+                                            fontWeight: "700",
+                                            fontSize: "12px",
+                                            lineHeight: "1.05",
+                                        }}
+                                    >
+                                        I have been informed of and understood all the above-mentioned terms and conditions and purchased the product
+                                        <br />
+                                        from {brandPolicyName} accordingly.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div
+                                className="variant-signature-section flex items-end justify-between"
+                                style={{
+                                    marginTop: "6mm",
+                                    fontSize: "11px",
+                                    lineHeight: "1.1",
+                                }}
+                            >
+                                <div>
+                                    {auth?.user?.name || sale?.creator?.name ? (
+                                        <>Printed By: {auth?.user?.name || sale?.creator?.name}</>
+                                    ) : null}
+                                </div>
+
+                                <div
+                                    className="variant-signature-box"
+                                    style={{
+                                        width: "50mm",
+                                        textAlign: "center",
+                                        fontSize: "15px",
+                                        fontWeight: "700",
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            borderTop: "1px dashed #000",
+                                            paddingTop: "0",
+                                        }}
+                                    >
+                                        Client Signature
+                                    </div>
+                                </div>
+                            </div>
+
+                            {sale?.invoice_no ? (
+                                <div
+                                    className="no-print"
+                                    style={{
+                                        marginTop: "2mm",
+                                        fontSize: "9px",
+                                        color: "#444",
+                                        textAlign: "left",
+                                    }}
+                                >
+                                    Invoice No: {sale.invoice_no}
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     );
-  };
-
-  // =========================
-  // ✅ Render
-  // =========================
-  return (
-    <div className="relative">
-      <InvoiceDesign2 />
-    </div>
-  );
 }

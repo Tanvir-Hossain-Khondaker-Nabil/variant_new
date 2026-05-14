@@ -55,7 +55,7 @@ import {
   FileImage,
   BellRing,
   ListChecks,
-  MessageCircle 
+  MessageCircle
 } from "lucide-react";
 import { useTranslation } from "../hooks/useTranslation";
 
@@ -106,7 +106,6 @@ const adminOverviewMenu = [
   { title: "Subscriptions", icon: "barcode", route: "user_subscriptions.index", active: "user_subscriptions.index", category: "Admin", permission: "user_subscriptions.view" },
 ];
 
-
 const outletsOverviewExtraMenu = [
   { title: "Outlet", icon: "store", route: "outlets.index", active: "outlets.index", category: "Outlets", permission: "outlets.view" },
 ];
@@ -127,6 +126,12 @@ const outletLoggedInMenu = [
   { title: "Add Purchase", icon: "arrow-right-left", route: "purchase.create", active: "purchase.create", category: "Purchase", permission: "purchase.create" },
   { title: "Purchase", icon: "receipt", route: "purchase.list", active: "purchase.list", category: "Purchase", permission: "purchase.view" },
   { title: "Local Purchase", icon: "receipt", route: "purchase.list_index", active: "purchase.list_index", category: "Purchase", permission: "purchase.list_index" },
+
+  // Pickup / Shop
+  { title: "Shops", icon: "store", route: "shops.index", active: "shops.index", category: "Purchase", permission: "purchase.view" },
+  { title: "Pickup Holds", icon: "package", route: "pickup-holds.index", active: "pickup-holds.index", category: "Purchase", permission: "purchase.view" },
+  { title: "Add Pickup Hold", icon: "arrow-right-left", route: "pickup-holds.create", active: "pickup-holds.create", category: "Purchase", permission: "purchase.create" },
+
   // Purchase Return
   { title: "Purchase Return", icon: "receipt", route: "purchase-returns.list", active: "purchase-returns.list", category: "Purchase", permission: "purchase_return.view" },
   { title: "Add Purchase Return", icon: "arrow-right-left", route: "purchase-returns.create", active: "purchase-returns.create", category: "Purchase", permission: "purchase_return.create" },
@@ -142,7 +147,6 @@ const outletLoggedInMenu = [
   { title: "Brands", icon: "box", route: "brands.index", active: "brands.index", category: "Inventory", permission: "brands.view" },
   { title: "Product Ledger", icon: "list-checks", route: "product-ledger.index", active: "product-ledger.index", category: "Inventory", permission: "product_ledger.view" },
 
-
   // Finance
   { title: "Expense Category", icon: "banknote-arrow-up", route: "expenses.category", active: "expenses.category", category: "Finance", permission: "expense.category_view" },
   { title: "Expense", icon: "wallet-minimal", route: "expenses.list", active: "expenses.list", category: "Finance", permission: "expense.view" },
@@ -157,14 +161,13 @@ const outletLoggedInMenu = [
   // Partners
   // { title: "Dealerships", icon: "box", route: "dealerships.index", active: "dealerships.index", category: "Partners", permission: "dealerships.view" },
 
-
   // Reports all
   { title: "All Sales Reports ", icon: "badge-cent", route: "reports.sales", active: "reports.sales", category: "Reports", permission: "sales.view" },
   { title: "All Purchase Reports", icon: "badge-cent", route: "reports.purchase", active: "reports.purchase", category: "Reports", permission: "purchase.view" },
-  
+
   { title: "All SalesItems Reports", icon: "badge-cent", route: "reports.sales.items", active: "reports.sales.items", category: "Reports", permission: "sales.view" },
   { title: "All PurchaseItems Reports", icon: "arrow-right-left", route: "reports.purchase.items", active: "reports.purchase.items", category: "Reports", permission: "purchase.items_view" },
-  
+
   { title: "All SalesReturn Reports", icon: "badge-cent", route: "reports.sales-return", active: "reports.sales-return", category: "Reports", permission: "sales.view" },
   { title: "All PurchaseReturn Reports", icon: "badge-cent", route: "reports.purchase-return", active: "reports.purchase-return", category: "Reports", permission: "purchase_return.view" },
 
@@ -175,8 +178,6 @@ const outletLoggedInMenu = [
   { title: "All Account Reports", icon: "dollar-sign", route: "reports.account", active: "reports.account", category: "Reports", permission: "accounts.view" },
   { title: "All Product Reports", icon: "dollar-sign", route: "reports.product", active: "reports.product", category: "Reports", permission: "product.view" },
   { title: "All Expense Reports", icon: "dollar-sign", route: "reports.expense", active: "reports.expense", category: "Reports", permission: "expense.view" },
-
-
 
   // CRM
   { title: "Customer", icon: "user-plus", route: "customer.index", active: "customer.index", category: "CRM", permission: "customer.view" },
@@ -195,41 +196,35 @@ const outletLoggedInMenu = [
   { title: "Users", icon: "user", route: "userlist.view", active: "userlist.view", category: "Admin", permission: "users.view" },
   { title: "Roles", icon: "user", route: "roles.index", active: "roles.index", category: "Admin", permission: "roles.view" },
 
-
   // Accounts
   { title: "Users Deposit", icon: "user", route: "deposits.index", active: "deposits.index", category: "Accounts", permission: "deposits.view" },
   { title: "Subscriptions Payments", icon: "dollar-sign", route: "subscriptions.payments", active: "subscriptions.payments", category: "Accounts", permission: "subscriptions.payments_view" },
-  { title: "System Setting", icon: "user", route: 'system.index', active: "system.index", category: "System", permission: "system.index" },
+  { title: "System Setting", icon: "user", route: "system.index", active: "system.index", category: "System", permission: "system.index" },
 
   // Outlets (super admin will see even inside outlet)
   { title: "Outlet", icon: "store", route: "outlets.index", active: "outlets.index", category: "Outlets", permission: "outlets.view" },
 ];
 
-
 const superAdminMenu = [
-    // Main
+  // Main
   { title: "Dashboard", icon: "home", route: "home", active: "home", category: "Main", permission: "dashboard.view" },
 
-    // Subscriptions
+  // Subscriptions
   { title: "Plan", icon: "barcode", route: "plans.index", active: "plans.index", category: "Subscriptions", permission: "plans.view" },
   // { title: "Plan Modules", icon: "barcode", route: "modules.index", active: "modules.index", category: "Subscriptions", permission: "modules.view" },
   { title: "Subscriptions", icon: "barcode", route: "subscriptions.index", active: "subscriptions.index", category: "Subscriptions", permission: "subscriptions.view" },
 
-
-    // Admin (super admin will see even inside outlet)
+  // Admin (super admin will see even inside outlet)
   { title: "Users", icon: "user", route: "userlist.view", active: "userlist.view", category: "Admin", permission: "users.view" },
   { title: "Roles", icon: "user", route: "roles.index", active: "roles.index", category: "Admin", permission: "roles.view" },
 
-
-    // Accounts
+  // Accounts
   { title: "Users Deposit", icon: "user", route: "deposits.index", active: "deposits.index", category: "Accounts", permission: "deposits.view" },
   { title: "Subscriptions Payments", icon: "dollar-sign", route: "subscriptions.payments", active: "subscriptions.payments", category: "Accounts", permission: "subscriptions.payments_view" },
 
-
   // System
-  { title: "System Setting", icon: "user", route: 'system.index', active: "system.index", category: "System", permission: "system.index" },
-
-]
+  { title: "System Setting", icon: "user", route: "system.index", active: "system.index", category: "System", permission: "system.index" },
+];
 
 const iconComponents = {
   dashboard: LayoutDashboard,
@@ -337,6 +332,9 @@ export default function Sidebar({ status, setStatus }) {
       "All Purchase Items": t("auth.all_purchase_items", "All Purchase Items"),
       "Purchase Return": t("auth.purchase_return", "Purchase Return"),
       "Add Purchase Return": t("auth.add_purchase_return", "Add Purchase Return"),
+      Shops: t("auth.shops", "Shops"),
+      "Pickup Holds": t("auth.pickup_holds", "Pickup Holds"),
+      "Add Pickup Hold": t("auth.add_pickup_hold", "Add Pickup Hold"),
 
       // Inventory
       "Damages List": t("auth.damages_list", "Damages List"),
@@ -501,7 +499,7 @@ export default function Sidebar({ status, setStatus }) {
       if (filtered.length) out[cat] = filtered;
     });
     return out;
-  }, [menuToShow, searchQuery, locale, permissions, isSuperAdmin, isLoggedIntoOutlet, isOutletUser]); 
+  }, [menuToShow, searchQuery, locale, permissions, isSuperAdmin, isLoggedIntoOutlet, isOutletUser]);
 
   const getFaviconUrl = () => {
     if (headerSettings?.fav_icon) {
@@ -634,8 +632,8 @@ export default function Sidebar({ status, setStatus }) {
                       <div key={`${category}-${index}`} className="relative group">
                         <div
                           className={`relative rounded-xl transition-all duration-200 ${isActive
-                              ? "bg-gradient-to-r from-white/20 to-white/10 backdrop-blur-sm border border-white/10"
-                              : "hover:bg-white/5"
+                            ? "bg-gradient-to-r from-white/20 to-white/10 backdrop-blur-sm border border-white/10"
+                            : "hover:bg-white/5"
                             }`}
                         >
                           <Link
@@ -667,7 +665,6 @@ export default function Sidebar({ status, setStatus }) {
                 </div>
               </div>
             ))}
-
 
             {/* Overview message (non-super-admin only) */}
             {!isSuperAdmin && !isLoggedIntoOutlet && (

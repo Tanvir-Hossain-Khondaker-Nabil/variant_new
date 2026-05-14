@@ -64,6 +64,8 @@ export default function AddPurchase({
   const [purchaseAttributeRows, setPurchaseAttributeRows] = useState([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
   const [purchaseTrackingEnabled, setPurchaseTrackingEnabled] = useState(false);
   const [purchaseTrackingType, setPurchaseTrackingType] = useState("imei");
+  const [purchaseCondition, setPurchaseCondition] = useState("new");
+  const [usedSource, setUsedSource] = useState("external");
 
   // Installment payment state
   const [installmentDuration, setInstallmentDuration] = useState(0);
@@ -155,6 +157,8 @@ export default function AddPurchase({
     setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
     setPurchaseTrackingEnabled(false);
     setPurchaseTrackingType("imei");
+    setPurchaseCondition("new");
+    setUsedSource("external");
   };
 
   const selectProductForPurchase = (product) => {
@@ -162,6 +166,8 @@ export default function AddPurchase({
     setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
     setPurchaseTrackingEnabled(Boolean(product?.is_tracking_enabled));
     setPurchaseTrackingType(product?.tracking_type || "imei");
+    setPurchaseCondition("new");
+    setUsedSource("external");
     setProductSearch(product?.name || "");
     setShowDropdown(false);
   };
@@ -280,6 +286,8 @@ export default function AddPurchase({
     const itemsWithUnits = selectedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
+      purchase_condition: item.purchase_condition || "new",
+      used_source: item.purchase_condition === "used" ? (item.used_source || "external") : null,
       unit: item.unit || "piece",
       unit_quantity: item.unit_quantity || item.quantity || 1,
       quantity: item.unit_quantity || item.quantity || 1,
@@ -550,7 +558,12 @@ export default function AddPurchase({
       return;
     }
 
-    const itemKey = makePurchaseAttributeKey(product.id, attributesObject);
+    if (purchaseCondition === "used" && usedSource === "sold_by_us" && !purchaseTrackingEnabled) {
+      alert("Used + Sold By Us purchase must have IMEI / Serial enabled.");
+      return;
+    }
+
+    const itemKey = `${makePurchaseAttributeKey(product.id, attributesObject)}-${purchaseCondition}-${purchaseCondition === "used" ? usedSource : "new"}`;
 
     const existingItemIndex = selectedItems.findIndex(
       (item) => item.uniqueKey === itemKey
@@ -573,6 +586,8 @@ export default function AddPurchase({
       existingItem.unit_quantity = nextQty;
       existingItem.quantity = nextQty;
       existingItem.total_price = nextQty * (Number(existingItem.unit_price) || 0);
+      existingItem.purchase_condition = purchaseCondition;
+      existingItem.used_source = purchaseCondition === "used" ? usedSource : null;
 
       if (existingItem.is_tracking_enabled) {
         existingItem.unit = "piece";
@@ -593,6 +608,8 @@ export default function AddPurchase({
         uniqueKey: itemKey,
         product_id: product.id,
         variant_id: null,
+        purchase_condition: purchaseCondition,
+        used_source: purchaseCondition === "used" ? usedSource : null,
         product_name: product.name,
         product_no: product.product_no,
         has_warranty: product.has_warranty,
@@ -877,6 +894,8 @@ export default function AddPurchase({
     const items = selectedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
+      purchase_condition: item.purchase_condition || "new",
+      used_source: item.purchase_condition === "used" ? (item.used_source || "external") : null,
       unit: item.unit || "piece",
       unit_quantity: item.unit_quantity || item.quantity || 1,
       quantity: item.unit_quantity || item.quantity || 1,
@@ -892,25 +911,40 @@ export default function AddPurchase({
         : [],
     }));
 
-    form.post(route("purchase.store"), {
-      data: {
+    router.post(
+      route("purchase.store"),
+      {
         ...form.data,
         items,
         paid_amount: paidAmount,
         payment_status: paymentStatus,
+        account_id: form.data.account_id || null,
+        warehouse_id: form.data.warehouse_id,
+        supplier_id: form.data.supplier_id,
+        purchase_date: form.data.purchase_date,
+        notes: form.data.notes,
+        use_partial_payment: usePartialPayment,
+        adjust_from_advance: adjustFromAdvance,
+        manual_payment_override: manualPaymentOverride,
+        installment_duration: installmentDuration,
+        total_installments: totalInstallments,
+        transportation_cost: transportationCost,
       },
-      preserveScroll: true,
-      onSuccess: () => router.visit(route("purchase.list")),
-      onError: (errors) => {
-        alert(
-          errors.error ||
-            errors.advance_adjustment ||
-            errors.items ||
-            "Form submission failed"
-        );
-        console.error("Form submission errors:", errors);
-      },
-    });
+      {
+        preserveScroll: true,
+        onSuccess: () => router.visit(route("purchase.list")),
+        onError: (errors) => {
+          alert(
+            errors.error ||
+              errors.advance_adjustment ||
+              errors.items ||
+              Object.values(errors)[0] ||
+              "Form submission failed"
+          );
+          console.error("Form submission errors:", errors);
+        },
+      }
+    );
   };
 
   const totalAmount = calculateTotal();
@@ -1378,6 +1412,59 @@ export default function AddPurchase({
                   </button>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div className="form-control">
+                    <label className="label py-1">
+                      <span className="label-text text-xs font-black uppercase text-gray-600">
+                        Purchase Category *
+                      </span>
+                    </label>
+                    <select
+                      className="select select-bordered select-sm w-full bg-white"
+                      value={purchaseCondition}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setPurchaseCondition(value);
+                        if (value === "new") {
+                          setUsedSource("external");
+                        }
+                      }}
+                    >
+                      <option value="new">New Product</option>
+                      <option value="used">Used Product</option>
+                    </select>
+                  </div>
+
+                  {purchaseCondition === "used" && (
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs font-black uppercase text-gray-600">
+                          Used Product Source *
+                        </span>
+                      </label>
+                      <select
+                        className="select select-bordered select-sm w-full bg-white"
+                        value={usedSource}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setUsedSource(value);
+                          if (value === "sold_by_us") {
+                            setPurchaseTrackingEnabled(true);
+                          }
+                        }}
+                      >
+                        <option value="external">External / Not Sold By Us</option>
+                        <option value="sold_by_us">Sold By Us Before</option>
+                      </select>
+                      {usedSource === "sold_by_us" && (
+                        <p className="text-[11px] text-orange-600 mt-1 font-bold">
+                          IMEI/Serial must exist in your system with sold status. It will become available again.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   {purchaseAttributeRows.map((row, index) => {
                     const values = getAttributeValues(row.attribute_name);
@@ -1576,6 +1663,26 @@ export default function AddPurchase({
                               <p className="text-xs text-gray-700 font-medium mt-1 truncate">
                                 {item.variant_name}
                               </p>
+
+                              <div className="flex flex-wrap items-center gap-1 mt-1">
+                                <span
+                                  className={`badge badge-xs ${
+                                    item.purchase_condition === "used"
+                                      ? "badge-warning"
+                                      : "badge-success"
+                                  }`}
+                                >
+                                  {item.purchase_condition === "used" ? "Used" : "New"}
+                                </span>
+
+                                {item.purchase_condition === "used" && (
+                                  <span className="text-[10px] font-bold text-gray-500">
+                                    {item.used_source === "sold_by_us"
+                                      ? "Sold By Us"
+                                      : "External"}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <button

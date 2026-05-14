@@ -173,4 +173,7 @@ return [
     'all_sales_return' => 'Sale Return',
     'damages_list' => 'Damages List',
     'product_ledger' => 'Product Ledger',
+    'pickup_holds' => 'Hold',
+    'shops' => 'Shop',
+    'add_pickup_hold' => 'Add pickup hold'
 ];

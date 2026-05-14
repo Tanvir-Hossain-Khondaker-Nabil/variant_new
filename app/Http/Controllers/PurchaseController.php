@@ -640,6 +640,23 @@ class PurchaseController extends Controller
                 $item['variant_id'] = $variant->id;
                 $item['tracking_type'] = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
 
+                /*
+                |--------------------------------------------------------------------------
+                | New / Used purchase condition
+                |--------------------------------------------------------------------------
+                | new: normal purchase. Existing IMEI/Serial not allowed.
+                | used + external: used product not sold by us. Existing IMEI/Serial not allowed.
+                | used + sold_by_us: IMEI/Serial must exist with sold status, then it returns to available.
+                |--------------------------------------------------------------------------
+                */
+                $item['purchase_condition'] = $item['purchase_condition'] ?? 'new';
+
+                if ($item['purchase_condition'] !== 'used') {
+                    $item['used_source'] = null;
+                } else {
+                    $item['used_source'] = $item['used_source'] ?? 'external';
+                }
+
                 $this->validateTrackedItem($product, $item);
 
                 $unitType = $product->unit_type ?? 'piece';
@@ -667,7 +684,8 @@ class PurchaseController extends Controller
                     'sale_price' => $salePrice,
                     'total_price' => $totalPrice,
                     'created_by' => $user->id,
-                    'warehouse_id' => $request->warehouse_id
+                    'warehouse_id' => $request->warehouse_id,
+                    'item_type' => $item['purchase_condition'] ?? 'new',
                 ]);
 
                 if ($product->has_warranty) {
@@ -695,10 +713,13 @@ class PurchaseController extends Controller
                     'quantity' => $unitQuantity,
                     'unit' => $unit,
                     'base_quantity' => $baseQuantity,
+                    'available_base_quantity' => $baseQuantity,
                     'purchase_price' => $unitPrice,
                     'sale_price' => $salePrice,
                     'created_by' => $user->id,
                     'batch_no' => $batchNo,
+                    'outlet_id' => $user->current_outlet_id ?? $user->outlet_id ?? null,
+                    'owner_id' => $user->owner_id ?? $user->id,
                 ]);
 
                 $this->generateStockBarcodeFromBatch($stock);
@@ -1579,7 +1600,9 @@ class PurchaseController extends Controller
 
         $qty = (int) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
         $unit = $item['unit'] ?? 'piece';
-        $trackingType = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
+        $trackingType = trim((string) ($item['tracking_type'] ?? $product->tracking_type ?? 'imei'));
+        $purchaseCondition = $item['purchase_condition'] ?? 'new';
+        $usedSource = $item['used_source'] ?? null;
         $identifiers = $item['identifiers'] ?? [];
 
         if ($unit !== 'piece') {
@@ -1595,7 +1618,7 @@ class PurchaseController extends Controller
         }
 
         $cleaned = collect($identifiers)
-            ->map(fn($v) => trim((string) $v))
+            ->map(fn($value) => trim((string) $value))
             ->filter()
             ->values();
 
@@ -1605,17 +1628,60 @@ class PurchaseController extends Controller
             ]);
         }
 
-        if ($cleaned->unique(fn($v) => strtolower($v))->count() !== $cleaned->count()) {
+        if ($cleaned->unique(fn($value) => strtolower($value))->count() !== $cleaned->count()) {
             throw ValidationException::withMessages([
                 'items' => "Duplicate {$trackingType} found for {$product->name}."
             ]);
         }
 
-        $exists = StockIdentifier::whereIn('identifier_value', $cleaned->all())->exists();
-        if ($exists) {
-            throw ValidationException::withMessages([
-                'items' => "One or more {$trackingType} already exists."
-            ]);
+        foreach ($cleaned as $identifierValue) {
+            $existingIdentifier = StockIdentifier::whereRaw('LOWER(identifier_value) = ?', [
+                    strtolower($identifierValue)
+                ])
+                ->lockForUpdate()
+                ->first();
+
+            if ($purchaseCondition === 'new') {
+                if ($existingIdentifier) {
+                    throw ValidationException::withMessages([
+                        'items' => "{$trackingType} {$identifierValue} already exists. For previously sold product, choose Used Product + Sold By Us Before."
+                    ]);
+                }
+
+                continue;
+            }
+
+            if ($purchaseCondition === 'used' && $usedSource === 'external') {
+                if ($existingIdentifier) {
+                    throw ValidationException::withMessages([
+                        'items' => "{$trackingType} {$identifierValue} already exists in this system. If this product was sold by you before, choose Used Product + Sold By Us Before."
+                    ]);
+                }
+
+                continue;
+            }
+
+            if ($purchaseCondition === 'used' && $usedSource === 'sold_by_us') {
+                if (!$existingIdentifier) {
+                    throw ValidationException::withMessages([
+                        'items' => "{$trackingType} {$identifierValue} was not found in your sold records. Use Used Product + External if this was not sold by you."
+                    ]);
+                }
+
+                if ($existingIdentifier->status !== 'sold') {
+                    throw ValidationException::withMessages([
+                        'items' => "{$trackingType} {$identifierValue} exists but status is {$existingIdentifier->status}. Only sold identifiers can be repurchased as Sold By Us."
+                    ]);
+                }
+
+                if ((int) $existingIdentifier->product_id !== (int) $product->id) {
+                    throw ValidationException::withMessages([
+                        'items' => "{$trackingType} {$identifierValue} belongs to another product."
+                    ]);
+                }
+
+                continue;
+            }
         }
     }
 
@@ -1625,12 +1691,46 @@ class PurchaseController extends Controller
             return;
         }
 
-        $trackingType = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
+        $trackingType = trim((string) ($item['tracking_type'] ?? $product->tracking_type ?? 'imei'));
+        $purchaseCondition = $item['purchase_condition'] ?? 'new';
+        $usedSource = $item['used_source'] ?? null;
 
         foreach (($item['identifiers'] ?? []) as $identifierValue) {
             $identifierValue = trim((string) $identifierValue);
 
             if ($identifierValue === '') {
+                continue;
+            }
+
+            if ($purchaseCondition === 'used' && $usedSource === 'sold_by_us') {
+                $existingIdentifier = StockIdentifier::whereRaw('LOWER(identifier_value) = ?', [
+                        strtolower($identifierValue)
+                    ])
+                    ->where('status', 'sold')
+                    ->where('product_id', $product->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$existingIdentifier) {
+                    throw new \Exception("Sold identifier {$identifierValue} not found for {$product->name}.");
+                }
+
+                $existingIdentifier->update([
+                    'stock_id' => $stock->id,
+                    'purchase_item_id' => $purchaseItem->id,
+                    'product_id' => $product->id,
+                    'variant_id' => $purchaseItem->variant_id,
+                    'identifier_type' => $trackingType,
+                    'identifier_value' => $identifierValue,
+                    'status' => 'available',
+                    'sale_id' => null,
+                    'sale_item_id' => null,
+                    'sold_at' => null,
+                    'created_by' => Auth::id(),
+                    'outlet_id' => $stock->outlet_id ?? (Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id),
+                    'owner_id' => $stock->owner_id ?? (Auth::user()?->owner_id ?? Auth::id()),
+                ]);
+
                 continue;
             }
 
@@ -1643,8 +1743,8 @@ class PurchaseController extends Controller
                 'identifier_value' => $identifierValue,
                 'status' => 'available',
                 'created_by' => Auth::id(),
-                'outlet_id' => Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id,
-                'owner_id' => Auth::user()?->owner_id ?? Auth::id(),
+                'outlet_id' => $stock->outlet_id ?? (Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id),
+                'owner_id' => $stock->owner_id ?? (Auth::user()?->owner_id ?? Auth::id()),
             ]);
         }
     }
