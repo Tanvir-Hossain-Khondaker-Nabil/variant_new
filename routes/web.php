@@ -10,6 +10,7 @@ use App\Http\Controllers\BarcodePrintController;
 use App\Http\Controllers\BonusSettingController;
 use App\Http\Controllers\BorrowerController;
 use App\Http\Controllers\BrandController;
+use App\Http\Controllers\BusinessSettingController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\CustomerController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\ExchangeController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ExpenseReportController;
 use App\Http\Controllers\ExtraCashController;
 use App\Http\Controllers\HeaderController;
 use App\Http\Controllers\InstallmentController;
@@ -34,6 +36,7 @@ use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OutletController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PickupHoldController;
 use App\Http\Controllers\PlanController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProvidentFundController;
@@ -47,6 +50,7 @@ use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SalesListController;
 use App\Http\Controllers\SalesReturnController;
 use App\Http\Controllers\SectorController;
+use App\Http\Controllers\ShopController;
 use App\Http\Controllers\SmsTemplateController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SupplierController;
@@ -251,7 +255,17 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         ->middleware('permission:return.delete')
         ->name('salesReturn.destroy');
 
+Route::controller(BusinessSettingController::class)
+    ->prefix('business-settings')
+    ->group(function () {
+        Route::get('/', 'edit')
+            ->middleware('permission:business_settings.view')
+            ->name('business-settings.edit');
 
+        Route::put('/', 'update')
+            ->middleware('permission:business_settings.edit')
+            ->name('business-settings.update');
+    });
 
 
     // account route will be here
@@ -331,6 +345,9 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         Route::post('/expense', 'store')->middleware('permission:expense.create')->name('expenses.post');
         Route::get('/expense/{id}', 'distroy')->middleware('permission:expense.delete')->name('expenses.del');
     });
+
+    Route::get('/expense-reports/monthly-cost', [ExpenseReportController::class, 'monthlyCost'])
+    ->name('expense-reports.monthly-cost');
 
     // extra cash
     Route::controller(ExtraCashController::class)->group(function () {
@@ -903,6 +920,14 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         Route::post('/{loan}/close', [LoanController::class, 'close'])
             ->name('loans.close')->middleware('permission:loans.close');
     });
+
+    Route::resource('shops', ShopController::class)->except(['create', 'edit', 'show']);
+    Route::get('/pickup-holds', [PickupHoldController::class, 'index'])->name('pickup-holds.index');
+    Route::get('/pickup-holds/create', [PickupHoldController::class, 'create'])->name('pickup-holds.create');
+    Route::post('/pickup-holds', [PickupHoldController::class, 'store'])->name('pickup-holds.store');
+    Route::get('/pickup-holds/{pickupHold}', [PickupHoldController::class, 'show'])->name('pickup-holds.show');
+    Route::post('/pickup-hold-items/{item}/return', [PickupHoldController::class, 'returnItem'])->name('pickup-hold-items.return');
+    Route::post('/pickup-hold-items/{item}/sold', [PickupHoldController::class, 'soldItem'])->name('pickup-hold-items.sold');
 
     Route::prefix('loan-repayments')->group(function () {
         Route::get('/', [LoanRepaymentController::class, 'index'])

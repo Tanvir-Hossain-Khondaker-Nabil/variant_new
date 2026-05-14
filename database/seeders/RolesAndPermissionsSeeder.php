@@ -245,6 +245,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'subscriptions.renew',
             'subscriptions.payments_view',
 
+            // Settings
+            'business_settings.view',
+            'business_settings.edit',
+
             // Attendance
             'attendance.view',
             'attendance.create',

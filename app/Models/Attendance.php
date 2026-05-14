@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Log;
 
 class Attendance extends Model
 {
@@ -24,7 +25,11 @@ class Attendance extends Model
         'notes',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'attendance_status',
+'check_in_time',
+'late_minutes',
+'late_fee',
     ];
 
     protected $casts = [
@@ -91,7 +96,7 @@ class Attendance extends Model
             return 0;
 
         } catch (\Exception $e) {
-            \Log::error('Late calculation error: ' . $e->getMessage(), [
+            Log::error('Late calculation error: ' . $e->getMessage(), [
                 'check_in' => $this->check_in,
                 'employee_id' => $this->employee_id
             ]);
@@ -128,7 +133,7 @@ class Attendance extends Model
             return 0;
 
         } catch (\Exception $e) {
-            \Log::error('Overtime calculation error: ' . $e->getMessage(), [
+            Log::error('Overtime calculation error: ' . $e->getMessage(), [
                 'check_out' => $this->check_out,
                 'employee_id' => $this->employee_id
             ]);
@@ -288,7 +293,7 @@ class Attendance extends Model
             return round($totalHours, 2);
 
         } catch (\Exception $e) {
-            \Log::error('Total hours calculation error: ' . $e->getMessage());
+            Log::error('Total hours calculation error: ' . $e->getMessage());
             return 0;
         }
     }

@@ -157,20 +157,27 @@ class AccountController extends Controller
         ]);
     }
 
-    public function update(AccountUpdate $request, Account $account)
-    {
-        $validated = $request->validated();
-
-        $account->update($validated);
-
-        return to_route('accounts.index')
-            ->with('success', 'Account updated successfully.');
+   public function update(AccountUpdate $request, Account $account)
+{
+    if ($account->is_locked && !$request->boolean('allow_locked_update')) {
+        return back()->with('error', 'This account is locked and cannot be updated.');
     }
+
+    $validated = $request->validated();
+
+    $account->update($validated);
+
+    return to_route('accounts.index')
+        ->with('success', 'Account updated successfully.');
+}
 
 
     //destroy method will be here
     public function destroy(Account $account)
     {
+        if ($account->is_petty_cash || $account->is_locked) {
+    return back()->with('error', 'Petty Cash account is locked and cannot be deleted.');
+}
         // Check if account has transactions
         if ($account->payments()->count() > 0) {
             return redirect()->back()

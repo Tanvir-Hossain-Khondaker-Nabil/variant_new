@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PurchaseRequestStore;
 use App\Models\Account;
+use App\Models\Attribute;
+use App\Models\AttributeValue;
 use App\Models\BusinessProfile;
 use App\Models\Installment;
 use App\Models\Payment;
@@ -368,14 +370,186 @@ class PurchaseController extends Controller
         $user = Auth::user();
         $isShadowUser = ($user->type === 'shadow');
 
+        $attributes = Attribute::with(['activeValues'])
+            ->active()
+            ->get()
+            ->map(function ($attribute) {
+                return [
+                    'id' => $attribute->id,
+                    'name' => $attribute->name,
+                    'code' => $attribute->code,
+                    'active_values' => $attribute->activeValues->map(function ($value) {
+                        return [
+                            'id' => $value->id,
+                            'value' => $value->value,
+                            'code' => $value->code,
+                        ];
+                    })->values(),
+                ];
+            })->values();
+
         return Inertia::render('Purchase/AddPurchase', [
             'suppliers' => Supplier::where('type', 'global')->get(),
             'warehouses' => Warehouse::where('is_active', true)->get(),
-            'products' => Product::where('type', 'global')->with('variants', 'brand')->get(),
+            'products' => Product::where('type', 'global')
+                ->with(['brand', 'category', 'variants.stock'])
+                ->get(),
+            'attributes' => $attributes,
             'accounts' => Account::where('is_active', true)->get(),
             'isShadowUser' => $isShadowUser,
             'unitConversions' => $this->getUnitConversions()
         ]);
+    }
+
+    private function normalizePurchaseAttributes(array $attributes): array
+    {
+        $normalized = [];
+
+        foreach ($attributes as $attributeName => $attributeValue) {
+            $name = trim((string) $attributeName);
+
+            if ($name === '') {
+                continue;
+            }
+
+            if (is_array($attributeValue)) {
+                $attributeValue = $attributeValue['value'] ?? $attributeValue['name'] ?? '';
+            }
+
+            $value = trim((string) $attributeValue);
+
+            if ($value === '') {
+                continue;
+            }
+
+            $normalized[$name] = $value;
+        }
+
+        ksort($normalized);
+
+        return $normalized;
+    }
+
+    private function ensureAttributeAndValueExist(string $attributeName, string $attributeValue): void
+    {
+        $attributeName = trim($attributeName);
+        $attributeValue = trim($attributeValue);
+
+        if ($attributeName === '' || $attributeValue === '') {
+            return;
+        }
+
+        $attribute = Attribute::whereRaw('LOWER(name) = ?', [strtolower($attributeName)])->first();
+
+        if (!$attribute) {
+            $lastId = ((int) Attribute::max('id')) + 1;
+
+            $attribute = Attribute::create([
+                'name' => $attributeName,
+                'code' => Str::slug($attributeName) . '-' . Str::upper(Str::random(6)) . $lastId,
+                'is_active' => true,
+                'created_by' => Auth::id(),
+                'outlet_id' => Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id,
+                'owner_id' => Auth::user()?->owner_id ?? Auth::id(),
+            ]);
+        }
+
+        $exists = AttributeValue::where('attribute_id', $attribute->id)
+            ->whereRaw('LOWER(value) = ?', [strtolower($attributeValue)])
+            ->exists();
+
+        if (!$exists) {
+            AttributeValue::create([
+                'attribute_id' => $attribute->id,
+                'value' => $attributeValue,
+                'code' => Str::slug($attributeValue) . '-' . Str::upper(Str::random(6)) . $attribute->id,
+                'is_active' => true,
+                'created_by' => Auth::id(),
+                'outlet_id' => Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id,
+                'owner_id' => Auth::user()?->owner_id ?? Auth::id(),
+            ]);
+        }
+    }
+
+    private function syncPurchaseAttributesToMaster(array $attributes): void
+    {
+        foreach ($attributes as $name => $value) {
+            $this->ensureAttributeAndValueExist((string) $name, (string) $value);
+        }
+    }
+
+    private function makeVariantSku(Product $product, array $attributes): string
+    {
+        $parts = [];
+
+        foreach ($attributes as $name => $value) {
+            $namePart = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', (string) $name), 0, 3));
+            $valuePart = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', (string) $value), 0, 5));
+
+            if ($namePart !== '' && $valuePart !== '') {
+                $parts[] = $namePart . $valuePart;
+            }
+        }
+
+        sort($parts);
+
+        $base = $product->product_no ?: ('PRD-' . $product->id);
+
+        if (empty($parts)) {
+            return $base . '_DEFAULT';
+        }
+
+        return $base . '_' . implode('_', $parts);
+    }
+
+    private function findOrCreateVariantFromPurchase(Product $product, array $attributes): Variant
+    {
+        $attributes = $this->normalizePurchaseAttributes($attributes);
+
+        if (!empty($attributes)) {
+            $this->syncPurchaseAttributesToMaster($attributes);
+        }
+
+        $variants = Variant::where('product_id', $product->id)->get();
+
+        foreach ($variants as $variant) {
+            $existing = $variant->attribute_values;
+
+            if (is_string($existing)) {
+                $decoded = json_decode($existing, true);
+                $existing = is_array($decoded) ? $decoded : [];
+            }
+
+            $existing = $this->normalizePurchaseAttributes($existing ?: []);
+
+            if ($existing === $attributes) {
+                return $variant;
+            }
+        }
+
+        return Variant::create([
+            'product_id' => $product->id,
+            'attribute_values' => $attributes,
+            'sku' => $this->makeVariantSku($product, $attributes),
+            'created_by' => Auth::id(),
+            'outlet_id' => Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id,
+            'owner_id' => Auth::user()?->owner_id ?? Auth::id(),
+        ]);
+    }
+
+    private function itemNeedsTracking(Product $product, array $item): bool
+    {
+        if (!empty($item['is_tracking_enabled'])) {
+            return true;
+        }
+
+        if ($product->is_tracking_enabled) {
+            return true;
+        }
+
+        $identifiers = $item['identifiers'] ?? [];
+
+        return is_array($identifiers) && count(array_filter($identifiers, fn($value) => trim((string) $value) !== '')) > 0;
     }
 
     // Store purchase: barcode ALWAYS created from batch_no
@@ -460,6 +634,12 @@ class PurchaseController extends Controller
 
             foreach ($request->items as $item) {
                 $product = Product::findOrFail($item['product_id']);
+                $purchaseAttributes = $this->normalizePurchaseAttributes($item['attributes'] ?? []);
+                $variant = $this->findOrCreateVariantFromPurchase($product, $purchaseAttributes);
+
+                $item['variant_id'] = $variant->id;
+                $item['tracking_type'] = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
+
                 $this->validateTrackedItem($product, $item);
 
                 $unitType = $product->unit_type ?? 'piece';
@@ -1056,6 +1236,11 @@ class PurchaseController extends Controller
             */
             foreach ($request->items as $item) {
                 $product = Product::findOrFail($item['product_id']);
+                $purchaseAttributes = $this->normalizePurchaseAttributes($item['attributes'] ?? []);
+                $variant = $this->findOrCreateVariantFromPurchase($product, $purchaseAttributes);
+
+                $item['variant_id'] = $variant->id;
+                $item['tracking_type'] = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
 
                 $this->validateTrackedItem($product, $item);
 
@@ -1075,7 +1260,7 @@ class PurchaseController extends Controller
 
                 $purchaseItem = $purchase->items()->create([
                     'product_id' => $item['product_id'],
-                    'variant_id' => $item['variant_id'] ?? null,
+                    'variant_id' => $item['variant_id'],
                     'quantity' => $unitQuantity,
                     'unit' => $unit,
                     'unit_quantity' => $unitQuantity,
@@ -1108,7 +1293,7 @@ class PurchaseController extends Controller
                 $stock = Stock::create([
                     'warehouse_id' => $request->warehouse_id,
                     'product_id' => $item['product_id'],
-                    'variant_id' => $item['variant_id'] ?? null,
+                    'variant_id' => $item['variant_id'],
                     'quantity' => $unitQuantity,
                     'unit' => $unit,
                     'base_quantity' => $baseQuantity,
@@ -1388,12 +1573,13 @@ class PurchaseController extends Controller
 
     private function validateTrackedItem(Product $product, array $item): void
     {
-        if (!$product->is_tracking_enabled) {
+        if (!$this->itemNeedsTracking($product, $item)) {
             return;
         }
 
         $qty = (int) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
         $unit = $item['unit'] ?? 'piece';
+        $trackingType = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
         $identifiers = $item['identifiers'] ?? [];
 
         if ($unit !== 'piece') {
@@ -1404,7 +1590,7 @@ class PurchaseController extends Controller
 
         if (!is_array($identifiers) || count($identifiers) !== $qty) {
             throw ValidationException::withMessages([
-                'items' => "{$product->name} requires exactly {$qty} {$product->tracking_type} values."
+                'items' => "{$product->name} requires exactly {$qty} {$trackingType} values."
             ]);
         }
 
@@ -1415,45 +1601,52 @@ class PurchaseController extends Controller
 
         if ($cleaned->count() !== $qty) {
             throw ValidationException::withMessages([
-                'items' => "{$product->name} requires all {$qty} {$product->tracking_type} values."
+                'items' => "{$product->name} requires all {$qty} {$trackingType} values."
             ]);
         }
 
         if ($cleaned->unique(fn($v) => strtolower($v))->count() !== $cleaned->count()) {
             throw ValidationException::withMessages([
-                'items' => "Duplicate {$product->tracking_type} found for {$product->name}."
+                'items' => "Duplicate {$trackingType} found for {$product->name}."
             ]);
         }
 
-        $exists = \App\Models\StockIdentifier::whereIn('identifier_value', $cleaned->all())->exists();
+        $exists = StockIdentifier::whereIn('identifier_value', $cleaned->all())->exists();
         if ($exists) {
             throw ValidationException::withMessages([
-                'items' => "One or more {$product->tracking_type} already exists."
+                'items' => "One or more {$trackingType} already exists."
             ]);
         }
     }
 
     private function saveTrackedIdentifiers(Product $product, PurchaseItem $purchaseItem, Stock $stock, array $item): void
     {
-        if (!$product->is_tracking_enabled) {
+        if (!$this->itemNeedsTracking($product, $item)) {
             return;
         }
+
+        $trackingType = $item['tracking_type'] ?? $product->tracking_type ?? 'imei';
 
         foreach (($item['identifiers'] ?? []) as $identifierValue) {
             $identifierValue = trim((string) $identifierValue);
 
-            \App\Models\StockIdentifier::create([
+            if ($identifierValue === '') {
+                continue;
+            }
+
+            StockIdentifier::create([
                 'stock_id' => $stock->id,
                 'purchase_item_id' => $purchaseItem->id,
                 'product_id' => $product->id,
                 'variant_id' => $purchaseItem->variant_id,
-                'identifier_type' => $product->tracking_type,
+                'identifier_type' => $trackingType,
                 'identifier_value' => $identifierValue,
                 'status' => 'available',
                 'created_by' => Auth::id(),
-                'outlet_id' => Auth::user()?->outlet_id,
-                'owner_id' => Auth::id(),
+                'outlet_id' => Auth::user()?->current_outlet_id ?? Auth::user()?->outlet_id,
+                'owner_id' => Auth::user()?->owner_id ?? Auth::id(),
             ]);
         }
     }
+
 }

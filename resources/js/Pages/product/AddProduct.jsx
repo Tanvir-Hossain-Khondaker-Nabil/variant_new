@@ -138,17 +138,9 @@ export default function AddProduct({ category, update, brand, attributes, errors
     const formSubmit = (e) => {
         e.preventDefault();
 
-        // If variants is empty, add one default variant UI row
-        let variantsToSend = variants;
-        if (!variantsToSend || variantsToSend.length === 0) {
-            variantsToSend = [{ id: null, attribute_values: {} }];
-            setVariants(variantsToSend);
-        }
-
-        const formattedVariants = variantsToSend.map((variant) => ({
-            id: variant.id || null,
-            attribute_values: normalizeAttrValues(variant.attribute_values),
-        }));
+        // Product page will not create variants anymore.
+        // Variants/attributes/IMEI/serial are handled from Purchase Add page.
+        const formattedVariants = [];
 
         const formData = new FormData();
 
@@ -419,77 +411,12 @@ export default function AddProduct({ category, update, brand, attributes, errors
                                 <span className="text-xs font-bold text-slate-600">{t("Allow Fractional Sales")}</span>
                             </label>
 
-                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div className="bg-slate-50 px-5 py-3 border-b flex items-center gap-2">
-                                    <Package size={16} className="text-primary" />
-                                    <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
-                                        {t("Device Tracking")}
-                                    </span>
+                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                                <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+                                    {t("Variant / IMEI / Serial moved to Purchase")}
                                 </div>
-
-                                <div className="p-5 space-y-4">
-                                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <input
-                                            type="checkbox"
-                                            className="toggle toggle-primary"
-                                            checked={!!productForm.data.is_tracking_enabled}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                productForm.setData("is_tracking_enabled", checked);
-
-                                                if (checked) {
-                                                    productForm.setData("unit_type", "piece");
-                                                    productForm.setData("default_unit", "piece");
-                                                    productForm.setData("min_sale_unit", "piece");
-                                                    productForm.setData("is_fraction_allowed", false);
-                                                } else {
-                                                    productForm.setData("tracking_type", "");
-                                                }
-                                            }}
-                                        />
-                                        <div className="flex-1">
-                                            <span className="text-sm font-bold text-slate-700 block">
-                                                {t("Enable IMEI / Serial Tracking")}
-                                            </span>
-                                            <span className="text-xs text-slate-500">
-                                                {t("Use this for mobile, laptop, desktop, computer accessories with unique serials")}
-                                            </span>
-                                        </div>
-                                    </label>
-
-                                    {productForm.data.is_tracking_enabled && (
-                                        <div className="form-control">
-                                            <label className="label py-1">
-                                                <span className="label-text text-xs font-bold">{t("Tracking Type")}</span>
-                                            </label>
-
-                                            <div className="flex gap-4">
-                                                {["imei", "serial"].map((type) => (
-                                                    <label
-                                                        key={type}
-                                                        className={`flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md border ${productForm.data.tracking_type === type
-                                                                ? "border-primary text-primary bg-primary/5"
-                                                                : "border-gray-300 text-slate-600"
-                                                            }`}
-                                                    >
-                                                        <input
-                                                            type="radio"
-                                                            name="tracking_type"
-                                                            value={type}
-                                                            checked={productForm.data.tracking_type === type}
-                                                            onChange={() => productForm.setData("tracking_type", type)}
-                                                            className="radio radio-xs hidden"
-                                                        />
-                                                        <span className="text-sm font-medium uppercase">{type}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-
-                                            {formErrors.tracking_type && (
-                                                <span className="text-error text-xs mt-1">{formErrors.tracking_type}</span>
-                                            )}
-                                        </div>
-                                    )}
+                                <div className="text-xs text-blue-600 mt-1">
+                                    {t("Create only the base product here. Product attributes, manual values, variants, IMEI and serial numbers will be added while purchasing stock.")}
                                 </div>
                             </div>
 
@@ -668,203 +595,27 @@ export default function AddProduct({ category, update, brand, attributes, errors
                         </div>
                     </div>
 
-                    {/* Variants Card */}
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[400px]">
-                        <div className="bg-slate-50 px-5 py-3 border-b flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Settings2 size={16} className="text-primary" />
-                                <span className="text-xs font-bold uppercase tracking-widest text-slate-600">{t("Variants")}</span>
-                            </div>
-
-                            <button type="button" onClick={() => setVariants([...variants, { attribute_values: {} }])} className="btn btn-xs btn-primary btn-circle">
-                                <Plus size={16} />
-                            </button>
+                    {/* Purchase Attribute Information Card */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="bg-slate-50 px-5 py-3 border-b flex items-center gap-2">
+                            <Settings2 size={16} className="text-primary" />
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
+                                {t("Purchase Attributes")}
+                            </span>
                         </div>
-
-                        {/* Optional search input in main variants card */}
-                        <div className="px-4 pt-4">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder={t("Search selected attributes...")}
-                                    className="input input-bordered input-sm w-full pl-9 rounded"
-                                    value={attributeSearchTerm}
-                                    onChange={(e) => setAttributeSearchTerm(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[500px]">
-                            {variants.map((variant, idx) => (
-                                <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl group transition-all hover:bg-white hover:shadow-md">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-[10px] font-bold text-slate-300 uppercase italic">#{idx + 1}</span>
-                                        <button type="button" onClick={() => setVariants(variants.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-error transition-colors">
-                                            <Trash size={12} />
-                                        </button>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-1 mb-3">
-                                        {Object.entries(normalizeAttrValues(variant.attribute_values))
-                                            .filter(([attr, val]) => {
-                                                if (!attributeSearchTerm) return true;
-                                                const s = attributeSearchTerm.toLowerCase();
-                                                return String(attr).toLowerCase().includes(s) || String(val).toLowerCase().includes(s);
-                                            })
-                                            .map(([attr, val]) => (
-                                                <div key={attr} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[9px] font-bold">
-                                                    <span className="text-primary/50">{attr}:</span> {val}
-                                                </div>
-                                            ))}
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setVariantAttributeSelector(idx)}
-                                        className="btn btn-xs btn-block btn-outline border-slate-300 rounded-lg text-[10px] uppercase font-black"
-                                    >
-                                        {t("Configure Logic")}
-                                    </button>
+                        <div className="p-5 space-y-3">
+                            <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                                <div className="text-sm font-bold text-slate-700">
+                                    {t("No variant selection in Product Create")}
                                 </div>
-                            ))}
+                                <div className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                    {t("Color, Storage, Battery Health, Location, Box Tray, Category, Status, IMEI and Serial will be selected or typed from Purchase Add page. This keeps product clean and stock-specific details inside purchase stock flow.")}
+                                </div>
+                            </div>
                         </div>
-
-                        {formErrors.variants && <span className="text-error text-xs p-4">{formErrors.variants}</span>}
                     </div>
                 </div>
 
-                {/* ATTRIBUTE SELECTOR (Centered Modal) */}
-                {variantAttributeSelector !== null && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 overflow-y-auto">
-                        <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
-                            <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
-                                <h4 className="font-bold text-slate-700">{t("Set Attributes")}</h4>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setVariantAttributeSelector(null);
-                                        setAttributeKeySearchTerm("");
-                                        setAttributeValueSearchTerm("");
-                                    }}
-                                    className="btn btn-sm btn-circle btn-ghost"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-
-                            {/* Search bar for Attribute Keys */}
-                            <div className="px-6 py-3 border-b bg-white space-y-3">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        type="text"
-                                        placeholder={t("Search attribute names...")}
-                                        className="input input-bordered input-sm w-full pl-9 rounded"
-                                        value={attributeKeySearchTerm}
-                                        onChange={(e) => setAttributeKeySearchTerm(e.target.value)}
-                                    />
-                                </div>
-
-                                {/* (Optional) Value search - uncomment if you want */}
-                                {/* 
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        type="text"
-                                        placeholder={t("Search attribute values...")}
-                                        className="input input-bordered input-sm w-full pl-9 rounded"
-                                        value={attributeValueSearchTerm}
-                                        onChange={(e) => setAttributeValueSearchTerm(e.target.value)}
-                                    />
-                                </div>
-                                */}
-                            </div>
-
-                            <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
-                                {getFilteredAttributesByKey().map((attr) => {
-                                    const filteredValues = getFilteredValues(attr.active_values || []);
-
-                                    if (attributeValueSearchTerm && filteredValues.length === 0) {
-                                        return null;
-                                    }
-
-                                    const currentAttrs = normalizeAttrValues(variants?.[variantAttributeSelector]?.attribute_values);
-
-                                    return (
-                                        <div key={attr.code} className="space-y-3">
-                                            <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                                {attr.name}
-                                            </h5>
-
-                                            <div className="w-full space-y-3">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {filteredValues.map((val) => {
-                                                        const isSelected = currentAttrs?.[attr.code] === val.value;
-
-                                                        return (
-                                                            <button
-                                                                key={val.id}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    // ✅ FIX: deep clone, no mutation
-                                                                    setVariants((prev) => {
-                                                                        const next = (prev || []).map((v) => ({
-                                                                            ...v,
-                                                                            attribute_values: normalizeAttrValues(v.attribute_values),
-                                                                        }));
-
-                                                                        const idx = variantAttributeSelector;
-                                                                        if (idx === null || idx === undefined) return next;
-                                                                        if (!next[idx]) next[idx] = { attribute_values: {} };
-
-                                                                        next[idx] = {
-                                                                            ...next[idx],
-                                                                            attribute_values: {
-                                                                                ...normalizeAttrValues(next[idx].attribute_values),
-                                                                                [attr.code]: val.value,
-                                                                            },
-                                                                        };
-
-                                                                        return next;
-                                                                    });
-                                                                }}
-                                                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isSelected
-                                                                    ? "bg-primary text-white shadow-md shadow-primary/20"
-                                                                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                                                    }`}
-                                                            >
-                                                                {val.value}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {getFilteredAttributesByKey().length === 0 && (
-                                    <div className="text-center py-8 text-slate-400">{t("No matching attributes found")}</div>
-                                )}
-                            </div>
-
-                            <div className="p-6 border-t bg-slate-50 text-right">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setVariantAttributeSelector(null);
-                                        setAttributeKeySearchTerm("");
-                                        setAttributeValueSearchTerm("");
-                                    }}
-                                    className="btn btn-primary px-10 rounded-xl font-bold"
-                                >
-                                    {t("Done")}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </form>
         </div>
     );

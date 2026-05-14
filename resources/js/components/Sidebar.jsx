@@ -74,6 +74,14 @@ const outletOverviewMenuBase = [
     permission: "dashboard.view",
   },
   {
+    title: "Business Settings",
+    icon: "settings",
+    route: "business-settings.edit",
+    active: "business-settings.edit",
+    category: "Main",
+    permission: null,
+},
+  {
     title: "Outlet Management",
     icon: "store",
     route: "outlets.index",
@@ -115,7 +123,7 @@ const outletsOverviewExtraMenu = [
 const outletLoggedInMenu = [
   // Main
   { title: "Dashboard", icon: "home", route: "home", active: "home", category: "Main", permission: "dashboard.view" },
-
+{ title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Main", permission: null },
   // Sales
   { title: "Add Sale (Inventory)", icon: "baggage-claim", route: "sales.create", active: "sales.create", category: "Sales", permission: "sales.create" },
   { title: "Add Sale (POS)", icon: "baggage-claim", route: "sales.add", active: "sales.add", category: "Sales", permission: "sales.create" },
@@ -175,6 +183,7 @@ const outletLoggedInMenu = [
   { title: "All Account Reports", icon: "dollar-sign", route: "reports.account", active: "reports.account", category: "Reports", permission: "accounts.view" },
   { title: "All Product Reports", icon: "dollar-sign", route: "reports.product", active: "reports.product", category: "Reports", permission: "product.view" },
   { title: "All Expense Reports", icon: "dollar-sign", route: "reports.expense", active: "reports.expense", category: "Reports", permission: "expense.view" },
+  { title: "Monthly Cost Report", icon: "file-text", route: "expense-reports.monthly-cost", active: "expense-reports.monthly-cost", category: "Reports", permission: "expense.view" },
 
 
 
@@ -210,6 +219,7 @@ const superAdminMenu = [
     // Main
   { title: "Dashboard", icon: "home", route: "home", active: "home", category: "Main", permission: "dashboard.view" },
 
+  { title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Main", permission: null },
     // Subscriptions
   { title: "Plan", icon: "barcode", route: "plans.index", active: "plans.index", category: "Subscriptions", permission: "plans.view" },
   // { title: "Plan Modules", icon: "barcode", route: "modules.index", active: "modules.index", category: "Subscriptions", permission: "modules.view" },
@@ -320,6 +330,7 @@ export default function Sidebar({ status, setStatus }) {
     const translationMap = {
       // Main
       Dashboard: t("auth.dashboard", "Dashboard"),
+      "Business Settings": "Business Settings",
       "Outlet Management": t("auth.outlet_management", "Outlet Management"),
 
       // Sales
@@ -362,6 +373,9 @@ export default function Sidebar({ status, setStatus }) {
       Transactions: t("auth.transactions", "Transactions"),
       Accounts: t("auth.accounts", "Accounts"),
       Ledgers: t("auth.ledgers", "Ledgers"),
+
+      //Reports
+      "Monthly Cost Report": "Monthly Cost Report",
 
       // Subscriptions
       Plan: t("auth.plan", "Plan"),
