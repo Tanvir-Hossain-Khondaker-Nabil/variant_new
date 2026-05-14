@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 
 class PurchaseController extends Controller
@@ -870,319 +871,299 @@ class PurchaseController extends Controller
     /**
      * Update purchase (batch-wise delete old item stock)
      */
-    public function update(Request $request)
+    public function update(Request $request, $id)
     {
-        $isUpdate = !empty($request->id);
+        $user = Auth::user();
+        $isShadowUser = ($user->type === 'shadow');
 
-        $request->merge([
-            'has_warranty' => filter_var($request->has_warranty, FILTER_VALIDATE_BOOLEAN),
-            'is_fraction_allowed' => filter_var($request->is_fraction_allowed, FILTER_VALIDATE_BOOLEAN),
-            'is_tracking_enabled' => filter_var($request->is_tracking_enabled, FILTER_VALIDATE_BOOLEAN),
+        $validated = $request->validate([
+            'supplier_id' => 'required|exists:suppliers,id',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'purchase_date' => 'required|date',
+            'notes' => 'nullable|string',
+
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.variant_id' => 'nullable|exists:variants,id',
+            'items.*.unit' => 'nullable|string|max:20',
+            'items.*.unit_quantity' => 'required|numeric|min:0.001',
+            'items.*.quantity' => 'required|numeric|min:0.001',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.sale_price' => 'required|numeric|min:0',
+            'items.*.total_price' => 'nullable|numeric|min:0',
+            'items.*.transportation_cost' => 'nullable|numeric|min:0',
+            'items.*.attributes' => 'nullable|array',
+
+            'paid_amount' => 'nullable|numeric|min:0',
+            'payment_status' => 'required|in:paid,partial,unpaid,installment',
+            'account_id' => 'nullable|exists:accounts,id',
+            'payment_method' => 'nullable|string|max:50',
+            'txn_ref' => 'nullable|string|max:255',
+
+            'adjust_from_advance' => 'nullable|boolean',
+            'use_partial_payment' => 'nullable|boolean',
+            'manual_payment_override' => 'nullable|boolean',
+
+            'installment_duration' => 'nullable|integer|min:0',
+            'total_installments' => 'nullable|integer|min:0',
+            'transportation_cost' => 'nullable|numeric|min:0',
         ]);
 
-        $user = Auth::user();
-
-        /*
-        |--------------------------------------------------------------------------
-        | 1) Subscription + Product Range Limit (Only for Create)
-        |--------------------------------------------------------------------------
-        */
-        if (!$isUpdate) {
-            $activeSub = $user->subscriptions()
-                ->where('status', 1)
-                ->where('start_date', '<=', now())
-                ->where('end_date', '>=', now())
-                ->latest('end_date')
-                ->first();
-
-            if (!$activeSub) {
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', 'No active subscription found. Please renew/activate your plan.');
-            }
-
-            $allowedProductRange = (int) optional($activeSub)->product_range;
-            $outletId = $user->outlet_id ?? null;
-
-            $currentCount = Product::query()
-                ->when($outletId, fn($q) => $q->where('outlet_id', $outletId))
-                ->count();
-
-            if ($allowedProductRange > 0 && $currentCount >= $allowedProductRange) {
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', "Product limit exceeded! Your plan allows {$allowedProductRange} products. Current: {$currentCount}.");
-            }
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 2) Decode variants JSON (Safe)
-        |--------------------------------------------------------------------------
-        */
-        if ($request->has('variants') && is_string($request->variants)) {
-            $decoded = json_decode($request->variants, true);
-            $request->merge(['variants' => is_array($decoded) ? $decoded : []]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 3) Tracking rule
-        |--------------------------------------------------------------------------
-        */
-        if ($request->boolean('is_tracking_enabled')) {
-            $request->merge([
-                'unit_type' => 'piece',
-                'default_unit' => 'piece',
-                'min_sale_unit' => 'piece',
-                'is_fraction_allowed' => false,
+        if (!$isShadowUser && ($request->paid_amount ?? 0) > 0 && !$request->account_id) {
+            return back()->withErrors([
+                'error' => 'Please select a payment account when making payment'
             ]);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | 4) Validation
-        |--------------------------------------------------------------------------
-        */
-        $rules = [
-            'product_name' => 'required|string|max:255',
-            'category_id' => 'required|exists:categories,id',
-            'product_no' => 'nullable|string|max:100|unique:products,product_no,' . ($request->id ?? 'NULL'),
-            'description' => 'nullable|string',
-            'product_type' => 'required|in:regular,in_house',
-            'variants' => 'nullable|array',
-            'variants.*.attribute_values' => 'nullable',
-            'brand_id' => 'nullable|exists:brands,id',
-            'unit_type' => 'required|in:piece,weight,volume,length',
-            'default_unit' => 'required|string|max:20',
-            'min_sale_unit' => 'nullable|string|max:20',
-            'photo' => 'nullable|image|max:2048',
-            'type' => 'nullable|string|max:20',
-            'is_fraction_allowed' => 'nullable',
-            'has_warranty' => 'nullable',
-            'warranty_duration' => 'nullable|integer|min:0',
-            'warranty_duration_type' => 'nullable|string',
-            'warranty_terms' => 'nullable|string',
-
-            // tracking
-            'is_tracking_enabled' => 'nullable|boolean',
-            'tracking_type' => 'nullable|required_if:is_tracking_enabled,true|in:imei,serial',
-        ];
-
-        if ($request->product_type === 'in_house') {
-            $rules = array_merge($rules, [
-                'in_house_cost' => 'required|numeric|min:0',
-                'in_house_shadow_cost' => 'nullable|numeric|min:0',
-                'in_house_sale_price' => 'required|numeric|min:0',
-                'in_house_shadow_sale_price' => 'nullable|numeric|min:0',
-                'in_house_initial_stock' => 'required|integer|min:0',
-            ]);
-        }
-
-        // unit based validation
-        if ($request->unit_type === 'weight') {
-            $rules['default_unit'] = 'required|in:ton,kg,gram,pound';
-            $rules['min_sale_unit'] = 'nullable|in:ton,kg,gram,pound';
-        } elseif ($request->unit_type === 'volume') {
-            $rules['default_unit'] = 'required|in:liter,ml';
-            $rules['min_sale_unit'] = 'nullable|in:liter,ml';
-        } elseif ($request->unit_type === 'length') {
-            $rules['default_unit'] = 'required|in:meter,cm,mm';
-            $rules['min_sale_unit'] = 'nullable|in:meter,cm,mm';
-        } else {
-            $rules['default_unit'] = 'required|in:piece,dozen,box';
-            $rules['min_sale_unit'] = 'nullable|in:piece,dozen,box';
-        }
-
-        $validator = Validator::make($request->all(), $rules);
-
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput()
-                ->with('error', 'Please fix the validation errors');
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 5) Save Product + Variants
-        |--------------------------------------------------------------------------
-        */
         DB::beginTransaction();
 
         try {
-            $product = $isUpdate ? Product::find($request->id) : new Product();
-
-            if ($isUpdate && !$product) {
-                throw new \Exception("Product not found with ID: " . $request->id);
-            }
-
-            $product->name = $request->product_name;
-            $product->type = $request->type;
-            $product->brand_id = $request->brand_id ?: null;
-            $product->product_no = $request->product_no;
-            $product->category_id = $request->category_id;
-            $product->description = $request->description;
-            $product->product_type = $request->product_type;
-
-            // warranty
-            $product->has_warranty = (bool) ($request->has_warranty ?? false);
-            $product->warranty_duration = $request->warranty_duration;
-            $product->warranty_duration_type = $request->warranty_duration_type;
-            $product->warranty_terms = $request->warranty_terms;
-
-            // tracking
-            $product->is_tracking_enabled = (bool) ($request->is_tracking_enabled ?? false);
-            $product->tracking_type = $product->is_tracking_enabled ? $request->tracking_type : null;
-
-            if (!$isUpdate) {
-                $product->created_by = Auth::id();
-            }
-
-            // unit fields
-            $product->unit_type = $request->unit_type;
-            $product->default_unit = $request->default_unit;
-            $product->is_fraction_allowed = (bool) ($request->is_fraction_allowed ?? false);
-            $product->min_sale_unit = $request->min_sale_unit;
-
-            // outlet_id set only if empty
-            if (!$product->outlet_id && $user && isset($user->outlet_id)) {
-                $product->outlet_id = $user->outlet_id;
-            }
-
-            // Photo upload
-            if ($request->hasFile('photo')) {
-                if (!empty($product->photo) && Storage::disk('public')->exists($product->photo)) {
-                    Storage::disk('public')->delete($product->photo);
-                }
-                $path = $request->file('photo')->store('products', 'public');
-                $product->photo = $path;
-            }
-
-            // In-house fields
-            if ($request->product_type === 'in_house') {
-                $product->in_house_cost = $request->in_house_cost;
-                $product->in_house_shadow_cost = $request->in_house_shadow_cost ?? 0;
-                $product->in_house_sale_price = $request->in_house_sale_price ?? 0;
-                $product->in_house_shadow_sale_price = $request->in_house_shadow_sale_price ?? 0;
-                $product->in_house_initial_stock = $request->in_house_initial_stock ?? 0;
-            } else {
-                $product->in_house_cost = null;
-                $product->in_house_shadow_cost = null;
-                $product->in_house_sale_price = null;
-                $product->in_house_shadow_sale_price = null;
-                $product->in_house_initial_stock = 0;
-            }
-
-            $product->save();
+            $purchase = Purchase::with(['items', 'payments'])->findOrFail($id);
 
             /*
             |--------------------------------------------------------------------------
-            | 6) Variants Logic (AUTO DEFAULT + AUTO REMOVE)
+            | Reverse old payments from account balance
             |--------------------------------------------------------------------------
             */
+            foreach ($purchase->payments as $oldPayment) {
+                if ($oldPayment->account_id && abs($oldPayment->amount) > 0) {
+                    $oldAccount = Account::find($oldPayment->account_id);
 
-            $variants = $request->input('variants', []);
-            if (!is_array($variants)) {
-                $variants = [];
-            }
-
-            $existingVariantIds = $product->variants()->pluck('id')->toArray();
-            $newVariantIds = [];
-
-            $nonEmptyVariants = [];
-            $hasAnyNonEmpty = false;
-
-            foreach ($variants as $variantData) {
-                if (!is_array($variantData)) {
-                    continue;
-                }
-
-                $attributeValues = $variantData['attribute_values'] ?? [];
-                if (is_string($attributeValues)) {
-                    $tmp = json_decode($attributeValues, true);
-                    $attributeValues = is_array($tmp) ? $tmp : [];
-                }
-                if (!is_array($attributeValues)) {
-                    $attributeValues = [];
-                }
-
-                $attributeValues = array_filter($attributeValues, fn($v) => trim((string) $v) !== '');
-
-                if (!empty($attributeValues)) {
-                    $hasAnyNonEmpty = true;
-                    $nonEmptyVariants[] = [
-                        'id' => $variantData['id'] ?? null,
-                        'attribute_values' => $attributeValues,
-                    ];
-                }
-            }
-
-            if (!$hasAnyNonEmpty) {
-                $nonEmptyVariants = [
-                    [
-                        'id' => null,
-                        'attribute_values' => [],
-                    ]
-                ];
-            }
-
-            foreach ($nonEmptyVariants as $variantData) {
-                $attributeValues = $variantData['attribute_values'] ?? [];
-                if (!is_array($attributeValues)) {
-                    $attributeValues = [];
-                }
-
-                $sku = $this->generateSku($product, $attributeValues);
-
-                if (!empty($variantData['id'])) {
-                    $variant = Variant::where('id', $variantData['id'])
-                        ->where('product_id', $product->id)
-                        ->first();
-
-                    if ($variant) {
-                        $variant->update([
-                            'attribute_values' => $attributeValues,
-                            'sku' => $sku,
-                        ]);
-                        $newVariantIds[] = $variant->id;
-
-                        if ($product->product_type === 'in_house') {
-                            $this->updateInHouseStock($product, $variant);
-                        }
+                    if ($oldAccount) {
+                        $oldAccount->updateBalance(abs($oldPayment->amount), 'deposit');
                     }
-                } else {
-                    $variant = Variant::create([
-                        'product_id' => $product->id,
-                        'attribute_values' => $attributeValues,
-                        'sku' => $sku,
+                }
+
+                $oldPayment->delete();
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Delete old purchase items, stock, identifiers, warranties
+            |--------------------------------------------------------------------------
+            */
+            foreach ($purchase->items as $oldItem) {
+                $oldStock = Stock::where('product_id', $oldItem->product_id)
+                    ->where('variant_id', $oldItem->variant_id)
+                    ->where('batch_no', 'LIKE', 'PO-' . $oldItem->id . '-%')
+                    ->first();
+
+                if ($oldStock) {
+                    StockIdentifier::where('stock_id', $oldStock->id)->delete();
+                    $oldStock->delete();
+                }
+
+                Warranty::where('purchase_item_id', $oldItem->id)->delete();
+                $oldItem->delete();
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Calculate new totals
+            |--------------------------------------------------------------------------
+            */
+            $totalAmount = 0;
+
+            foreach ($request->items as $item) {
+                $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 0);
+                $unitPrice = $isShadowUser ? 0 : (float) ($item['unit_price'] ?? 0);
+
+                $totalAmount += $unitQuantity * $unitPrice;
+            }
+
+            $totalAmount += (float) ($request->transportation_cost ?? 0);
+
+            $paidAmount = $isShadowUser ? 0 : (float) ($request->paid_amount ?? 0);
+            $dueAmount = max(0, $totalAmount - $paidAmount);
+
+            $paymentType = $request->payment_method ?? 'cash';
+            $account = null;
+
+            if (!$isShadowUser && $request->account_id) {
+                $account = Account::find($request->account_id);
+
+                if (!$account) {
+                    throw new \Exception('Selected account not found');
+                }
+
+                if (!$account->is_active) {
+                    throw new \Exception('Selected account is not active');
+                }
+
+                $paymentType = $account->type ?? $paymentType;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Advance adjustment
+            |--------------------------------------------------------------------------
+            */
+            if (!$isShadowUser && $request->boolean('adjust_from_advance')) {
+                $supplier = Supplier::findOrFail($request->supplier_id);
+                $paymentType = 'advance_adjustment';
+
+                if ($paidAmount > $supplier->advance_amount) {
+                    throw new \Exception('Advance adjustment cannot be greater than available advance amount.');
+                }
+
+                $supplier->update([
+                    'advance_amount' => $supplier->advance_amount - $paidAmount,
+                ]);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Update purchase
+            |--------------------------------------------------------------------------
+            */
+            $purchase->update([
+                'supplier_id' => $request->supplier_id,
+                'warehouse_id' => $request->warehouse_id,
+                'purchase_date' => $request->purchase_date,
+                'grand_total' => $totalAmount,
+                'paid_amount' => $paidAmount,
+                'due_amount' => $dueAmount,
+                'payment_status' => $isShadowUser ? 'unpaid' : $request->payment_status,
+                'notes' => $request->notes,
+                'payment_type' => $paymentType,
+                'transportation_cost' => (float) ($request->transportation_cost ?? 0),
+                'installment_duration' => (int) ($request->installment_duration ?? 0),
+                'total_installments' => (int) ($request->total_installments ?? 0),
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Delete old installments and recreate if installment
+            |--------------------------------------------------------------------------
+            */
+            Installment::where('purchase_id', $purchase->id)->delete();
+
+            if (!$isShadowUser && $request->payment_status === 'installment') {
+                $installmentDuration = (int) $request->installment_duration;
+                $totalInstallments = (int) $request->total_installments;
+
+                if ($installmentDuration <= 0 || $totalInstallments <= 0) {
+                    throw new \Exception('Please enter valid installment details');
+                }
+
+                $this->installmentManage($purchase, $installmentDuration, $totalInstallments);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Recreate purchase items and stocks
+            |--------------------------------------------------------------------------
+            */
+            foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                $this->validateTrackedItem($product, $item);
+
+                $unitType = $product->unit_type ?? 'piece';
+                $unit = $item['unit'] ?? ($product->default_unit ?? 'piece');
+                $unitQuantity = (float) ($item['unit_quantity'] ?? $item['quantity'] ?? 1);
+
+                $baseQuantity = $this->convertToBase($unitQuantity, $unit, $unitType);
+
+                $unitPrice = $isShadowUser ? 0 : (float) ($item['unit_price'] ?? 0);
+                $salePrice = $isShadowUser ? 0 : (float) ($item['sale_price'] ?? 0);
+                $totalPrice = $unitQuantity * $unitPrice;
+
+                if (!$isShadowUser && $salePrice <= 0) {
+                    throw new \Exception("Sale price must be greater than 0 for product ID: {$item['product_id']}");
+                }
+
+                $purchaseItem = $purchase->items()->create([
+                    'product_id' => $item['product_id'],
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'quantity' => $unitQuantity,
+                    'unit' => $unit,
+                    'unit_quantity' => $unitQuantity,
+                    'base_quantity' => $baseQuantity,
+                    'unit_price' => $unitPrice,
+                    'sale_price' => $salePrice,
+                    'total_price' => $totalPrice,
+                    'created_by' => $user->id,
+                    'warehouse_id' => $request->warehouse_id,
+                ]);
+
+                if ($product->has_warranty) {
+                    $endDate = match ($product->warranty_duration_type) {
+                        Product::Day => now()->addDays($product->warranty_duration),
+                        Product::Month => now()->addMonths($product->warranty_duration),
+                        Product::Year => now()->addYears($product->warranty_duration),
+                        default => now(),
+                    };
+
+                    Warranty::create([
+                        'purchase_item_id' => $purchaseItem->id,
+                        'start_date' => now(),
+                        'end_date' => $endDate,
+                        'terms' => $product->warranty_terms,
                     ]);
-
-                    $newVariantIds[] = $variant->id;
-
-                    if ($product->product_type === 'in_house') {
-                        $this->createInHouseStock($product, $variant);
-                    }
                 }
+
+                $batchNo = 'PO-' . $purchaseItem->id . '-' . Str::upper(Str::random(4));
+
+                $stock = Stock::create([
+                    'warehouse_id' => $request->warehouse_id,
+                    'product_id' => $item['product_id'],
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'quantity' => $unitQuantity,
+                    'unit' => $unit,
+                    'base_quantity' => $baseQuantity,
+                    'purchase_price' => $unitPrice,
+                    'sale_price' => $salePrice,
+                    'created_by' => $user->id,
+                    'batch_no' => $batchNo,
+                ]);
+
+                $this->generateStockBarcodeFromBatch($stock);
+                $this->saveTrackedIdentifiers($product, $purchaseItem, $stock, $item);
             }
 
-            $variantsToDelete = array_diff($existingVariantIds, $newVariantIds);
-            if (!empty($variantsToDelete)) {
-                Variant::whereIn('id', $variantsToDelete)->delete();
-                Stock::whereIn('variant_id', $variantsToDelete)->delete();
+            /*
+            |--------------------------------------------------------------------------
+            | Create new payment
+            |--------------------------------------------------------------------------
+            */
+            if (!$isShadowUser && $paidAmount > 0) {
+                if ($account) {
+                    if (!$account->canWithdraw($paidAmount)) {
+                        throw new \Exception("Insufficient balance in account: {$account->name}");
+                    }
+
+                    $account->updateBalance($paidAmount, 'withdraw');
+                }
+
+                $payment = new Payment();
+                $payment->purchase_id = $purchase->id;
+                $payment->amount = -$paidAmount;
+                $payment->payment_method = $request->payment_method ?? $paymentType;
+                $payment->txn_ref = $request->txn_ref ?? ('nexoryn-' . Str::random(10));
+                $payment->note = $request->notes ?? null;
+                $payment->supplier_id = $request->supplier_id ?? null;
+                $payment->account_id = $request->account_id;
+                $payment->paid_at = Carbon::now();
+                $payment->created_by = Auth::id();
+                $payment->save();
             }
 
             DB::commit();
 
-            return redirect()->route('product.list')
-                ->with('success', "Product " . ($isUpdate ? 'updated' : 'created') . " successfully");
+            return redirect()
+                ->route('purchase.list')
+                ->with('success', 'Purchase updated successfully');
 
-        } catch (\Exception $th) {
+        } catch (\Exception $e) {
             DB::rollBack();
 
-            return redirect()->back()
+            return redirect()
+                ->back()
                 ->withInput()
-                ->with('error', "Server error: " . $th->getMessage());
+                ->withErrors([
+                    'error' => 'Error updating purchase: ' . $e->getMessage()
+                ]);
         }
     }
 

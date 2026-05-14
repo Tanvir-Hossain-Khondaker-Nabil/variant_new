@@ -125,7 +125,7 @@ export default function AddPurchase({
         const items = purchase.items.map((item, index) => {
           const product = products.find(p => p.id === item.product_id);
           const variant = item.variant;
-          
+
           // Create a unique identifier that includes all attributes
           let variantIdentifier = "default";
           if (variant && variant.attribute_values && Object.keys(variant.attribute_values).length > 0) {
@@ -144,7 +144,7 @@ export default function AddPurchase({
             setProductUnits(prev => ({ ...prev, [uniqueKey]: units }));
             setSelectedUnits(prev => ({ ...prev, [uniqueKey]: item.unit || units[0] }));
             setUnitQuantities(prev => ({ ...prev, [uniqueKey]: parseFloat(item.unit_quantity) || 1 }));
-            
+
             const saleUnits = getAvailableSaleUnits(product, item.unit || units[0]);
             setAvailableSaleUnits(prev => ({ ...prev, [uniqueKey]: saleUnits }));
           }
@@ -819,6 +819,9 @@ export default function AddPurchase({
     const items = selectedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
+      product_name: item.product_name,
+      product_no: item.product_no,
+      variant_name: item.variant_name,
       unit: item.unit || "piece",
       unit_quantity: item.unit_quantity || item.quantity || 1,
       quantity: item.unit_quantity || item.quantity || 1,
@@ -829,32 +832,46 @@ export default function AddPurchase({
       attributes: item.attributes || {},
     }));
 
-    // Determine route and method based on edit mode
-    const submitRoute = isEditMode 
-      ? route("purchase.update", purchase.id) 
+    const firstItem = selectedItems[0];
+    const submitRoute = isEditMode
+      ? route("purchase.update", purchase.id)
       : route("purchase.store");
-    
-    const method = isEditMode ? "put" : "post";
 
-    // Submit
-    form[method](submitRoute, {
-      data: {
-        ...form.data,
-        items,
-        paid_amount: paidAmount,
-        payment_status: paymentStatus,
-      },
+    const payload = {
+      ...form.data,
+
+      // root level fields for backend validation
+      product_name: firstItem?.product_name || "",
+      product_no: firstItem?.product_no || "",
+      variant_name: firstItem?.variant_name || "",
+
+      items,
+      paid_amount: paidAmount,
+      payment_status: paymentStatus,
+    };
+
+    const options = {
       preserveScroll: true,
-      onSuccess: () => router.visit(route("purchase.list")),
+      onSuccess: () => {
+        router.visit(route("purchase.list"));
+      },
       onError: (errors) => {
-        alert(
+        console.error("Form submission errors:", errors);
+
+        const firstError =
           errors.error ||
           errors.advance_adjustment ||
-          "Form submission failed"
-        );
-        console.error("Form submission errors:", errors);
+          Object.values(errors)[0];
+
+        alert(firstError || "Form submission failed");
       },
-    });
+    };
+
+    if (isEditMode) {
+      router.put(submitRoute, payload, options);
+    } else {
+      router.post(submitRoute, payload, options);
+    }
   };
 
   const totalAmount = calculateTotal();
@@ -1084,7 +1101,7 @@ export default function AddPurchase({
                 <span className="absolute left-3 top-3 text-gray-500">৳</span>
                 <input
                   type="number"
-                  
+
                   min="0"
                   className="input input-bordered w-full rounded-xl text-sm pl-8"
                   value={transportationCost}
@@ -1175,7 +1192,7 @@ export default function AddPurchase({
                     <div className="form-control">
                       <input
                         type="number"
-                        
+
                         className="input input-bordered input-xs w-full bg-white border-gray-300 font-mono text-[11px]"
                         value={paidAmount}
                         onChange={handleManualPaymentInput}
@@ -1367,9 +1384,9 @@ export default function AddPurchase({
                                 )
                               }
                             >
-                              <div style={{borderRadius: '0.375rem'}} className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2">
+                              <div style={{ borderRadius: '0.375rem' }} className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2">
                                 <span className="font-bold text-xs text-gray-800 truncate">
-                                  { variantName }
+                                  {variantName}
                                 </span>
                               </div>
                               <div className="font-mono text-xs font-black text-gray-500">
@@ -1544,7 +1561,7 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  
+
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
                                   value={
                                     item.unit_price ||
@@ -1573,7 +1590,7 @@ export default function AddPurchase({
                                 </label>
                                 <input
                                   type="number"
-                                  
+
                                   className="input input-bordered input-sm w-full font-mono text-xs rounded"
                                   value={
                                     item.sale_price ||
@@ -1773,9 +1790,6 @@ export default function AddPurchase({
                 ? "bg-amber-500 hover:bg-amber-600 text-black border-none"
                 : "bg-red-600 hover:bg-red-700 text-white border-none"
                 }`}
-              disabled={
-                form.processing || selectedItems.length === 0
-              }
             >
               {form.processing ? (
                 <div className="loading loading-spinner loading-sm"></div>

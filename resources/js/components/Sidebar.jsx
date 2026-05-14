@@ -88,9 +88,14 @@ const outletOverviewMenuBase = [
 const investmentsOverviewMenu = [
   { title: "Investors", icon: "users", route: "investors.index", active: "investors.index", category: "Investments", permission: "investors.view" },
   { title: "Add Investor", icon: "user-plus", route: "investors.create", active: "investors.create", category: "Investments", permission: "investors.create" },
+
   { title: "Investments", icon: "wallet-minimal", route: "investments.index", active: "investments.index", category: "Investments", permission: "investments.view" },
   { title: "Add Investment", icon: "wallet-minimal", route: "investments.create", active: "investments.create", category: "Investments", permission: "investments.create" },
   { title: "Investment Returns", icon: "dollar-sign", route: "investmentReturns.index", active: "investmentReturns.index", category: "Investments", permission: "investments.returns.view" },
+
+  { title: "Borrowers", icon: "users", route: "borrowers.index", active: "borrowers.index", category: "Investments", permission: "borrowers.view" },
+  { title: "Loans", icon: "badge-dollar-sign", route: "loans.index", active: "loans.index", category: "Investments", permission: "loans.view" },
+  { title: "Loan Repayments", icon: "dollar-sign", route: "loanRepayments.index", active: "loanRepayments.index", category: "Investments", permission: "loans.repayments.view" },
 ];
 
 // Overview Admin

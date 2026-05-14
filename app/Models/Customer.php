@@ -21,12 +21,18 @@ class Customer extends Model
         'due_amount',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'account_id',
     ];
 
     use BelongsToTenant;
 
     const IS_ACTIVE = 1;
+
+    public function account()
+    {
+        return $this->belongsTo(Account::class, 'account_id');
+    }
 
 
     public function scopeFilter($query, array $filters)
