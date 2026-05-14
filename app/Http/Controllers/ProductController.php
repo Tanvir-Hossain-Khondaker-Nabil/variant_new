@@ -301,7 +301,9 @@ class ProductController extends Controller
         $request->merge([
             'has_warranty' => filter_var($request->has_warranty, FILTER_VALIDATE_BOOLEAN),
             'is_fraction_allowed' => filter_var($request->is_fraction_allowed, FILTER_VALIDATE_BOOLEAN),
-            'is_tracking_enabled' => filter_var($request->is_tracking_enabled, FILTER_VALIDATE_BOOLEAN),
+            // Product create no longer handles IMEI/Serial tracking. Purchase Add page handles it item-wise.
+            'is_tracking_enabled' => false,
+            'tracking_type' => null,
         ]);
 
         $user = Auth::user();
@@ -388,9 +390,9 @@ class ProductController extends Controller
             'warranty_duration_type' => 'nullable|string',
             'warranty_terms' => 'nullable|string',
 
-            // tracking
+            // tracking moved to purchase flow
             'is_tracking_enabled' => 'nullable|boolean',
-            'tracking_type' => 'nullable|required_if:is_tracking_enabled,true|in:imei,serial',
+            'tracking_type' => 'nullable|in:imei,serial',
         ];
 
         if ($request->product_type === 'in_house') {
@@ -502,98 +504,36 @@ class ProductController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | 6) Variants Logic (AUTO DEFAULT + AUTO REMOVE)
+            | 6) Variant Logic Removed From Product Create
             |--------------------------------------------------------------------------
+            | New requirement:
+            | - Product create/update only saves base product information.
+            | - Attribute combinations and IMEI/Serial are created from Purchase Add page.
+            | - Existing variants are NOT deleted here, because they may already be used by
+            |   purchase_items, stocks, sale_items, returns, identifiers, barcodes, etc.
+            | - Only when a product has no variant at all, create one empty default variant
+            |   so old parts of the system that expect product->variants still work.
             */
+            if ($product->variants()->count() === 0) {
+                $variant = Variant::create([
+                    'product_id' => $product->id,
+                    'attribute_values' => [],
+                    'sku' => $this->generateSku($product, []),
+                    'created_by' => Auth::id(),
+                    'outlet_id' => $product->outlet_id,
+                    'owner_id' => $product->owner_id ?? Auth::id(),
+                ]);
 
-            $variants = $request->input('variants', []);
-            if (!is_array($variants)) {
-                $variants = [];
-            }
-
-            $existingVariantIds = $product->variants()->pluck('id')->toArray();
-            $newVariantIds = [];
-
-            $nonEmptyVariants = [];
-            $hasAnyNonEmpty = false;
-
-            foreach ($variants as $variantData) {
-                if (!is_array($variantData)) {
-                    continue;
-                }
-
-                $attributeValues = $variantData['attribute_values'] ?? [];
-                if (is_string($attributeValues)) {
-                    $tmp = json_decode($attributeValues, true);
-                    $attributeValues = is_array($tmp) ? $tmp : [];
-                }
-                if (!is_array($attributeValues)) {
-                    $attributeValues = [];
-                }
-
-                $attributeValues = array_filter($attributeValues, fn($v) => trim((string) $v) !== '');
-
-                if (!empty($attributeValues)) {
-                    $hasAnyNonEmpty = true;
-                    $nonEmptyVariants[] = [
-                        'id' => $variantData['id'] ?? null,
-                        'attribute_values' => $attributeValues,
-                    ];
+                if ($product->product_type === 'in_house') {
+                    $this->createInHouseStock($product, $variant);
                 }
             }
 
-            if (!$hasAnyNonEmpty) {
-                $nonEmptyVariants = [
-                    [
-                        'id' => null,
-                        'attribute_values' => [],
-                    ]
-                ];
-            }
-
-            foreach ($nonEmptyVariants as $variantData) {
-                $attributeValues = $variantData['attribute_values'] ?? [];
-                if (!is_array($attributeValues)) {
-                    $attributeValues = [];
-                }
-
-                $sku = $this->generateSku($product, $attributeValues);
-
-                if (!empty($variantData['id'])) {
-                    $variant = Variant::where('id', $variantData['id'])
-                        ->where('product_id', $product->id)
-                        ->first();
-
-                    if ($variant) {
-                        $variant->update([
-                            'attribute_values' => $attributeValues,
-                            'sku' => $sku,
-                        ]);
-                        $newVariantIds[] = $variant->id;
-
-                        if ($product->product_type === 'in_house') {
-                            $this->updateInHouseStock($product, $variant);
-                        }
-                    }
-                } else {
-                    $variant = Variant::create([
-                        'product_id' => $product->id,
-                        'attribute_values' => $attributeValues,
-                        'sku' => $sku,
-                    ]);
-
-                    $newVariantIds[] = $variant->id;
-
-                    if ($product->product_type === 'in_house') {
-                        $this->createInHouseStock($product, $variant);
-                    }
-                }
-            }
-
-            $variantsToDelete = array_diff($existingVariantIds, $newVariantIds);
-            if (!empty($variantsToDelete)) {
-                Variant::whereIn('id', $variantsToDelete)->delete();
-                Stock::whereIn('variant_id', $variantsToDelete)->delete();
+            // For in-house products, keep existing default/old in-house stock prices updated.
+            if ($product->product_type === 'in_house') {
+                $product->variants()->get()->each(function ($variant) use ($product) {
+                    $this->updateInHouseStock($product, $variant);
+                });
             }
 
             DB::commit();

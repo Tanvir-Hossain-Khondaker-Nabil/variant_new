@@ -34,6 +34,7 @@ use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OutletController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PickupHoldController;
 use App\Http\Controllers\PlanController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProvidentFundController;
@@ -47,6 +48,7 @@ use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SalesListController;
 use App\Http\Controllers\SalesReturnController;
 use App\Http\Controllers\SectorController;
+use App\Http\Controllers\ShopController;
 use App\Http\Controllers\SmsTemplateController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SupplierController;
@@ -903,6 +905,14 @@ Route::middleware(['auth', 'active.subscription', 'check.system'])->group(functi
         Route::post('/{loan}/close', [LoanController::class, 'close'])
             ->name('loans.close')->middleware('permission:loans.close');
     });
+
+    Route::resource('shops', ShopController::class)->except(['create', 'edit', 'show']);
+    Route::get('/pickup-holds', [PickupHoldController::class, 'index'])->name('pickup-holds.index');
+    Route::get('/pickup-holds/create', [PickupHoldController::class, 'create'])->name('pickup-holds.create');
+    Route::post('/pickup-holds', [PickupHoldController::class, 'store'])->name('pickup-holds.store');
+    Route::get('/pickup-holds/{pickupHold}', [PickupHoldController::class, 'show'])->name('pickup-holds.show');
+    Route::post('/pickup-hold-items/{item}/return', [PickupHoldController::class, 'returnItem'])->name('pickup-hold-items.return');
+    Route::post('/pickup-hold-items/{item}/sold', [PickupHoldController::class, 'soldItem'])->name('pickup-hold-items.sold');
 
     Route::prefix('loan-repayments')->group(function () {
         Route::get('/', [LoanRepaymentController::class, 'index'])

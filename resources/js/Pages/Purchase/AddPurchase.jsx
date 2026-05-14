@@ -34,6 +34,7 @@ export default function AddPurchase({
   products,
   accounts,
   isShadowUser,
+  attributes = [],
   unitConversions = {
     weight: { ton: 1000, kg: 1, gram: 0.001, pound: 0.453592 },
     volume: { liter: 1, ml: 0.001 },
@@ -58,6 +59,12 @@ export default function AddPurchase({
   const [brands, setBrands] = useState([]);
   const [transportationCost, setTransportationCost] = useState(0);
 
+  // Dynamic purchase attribute state
+  const [selectedPurchaseProduct, setSelectedPurchaseProduct] = useState(null);
+  const [purchaseAttributeRows, setPurchaseAttributeRows] = useState([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+  const [purchaseTrackingEnabled, setPurchaseTrackingEnabled] = useState(false);
+  const [purchaseTrackingType, setPurchaseTrackingType] = useState("imei");
+
   // Installment payment state
   const [installmentDuration, setInstallmentDuration] = useState(0);
   const [totalInstallments, setTotalInstallments] = useState(0);
@@ -81,15 +88,6 @@ export default function AddPurchase({
           allBrands.add(product.brand.name);
         }
 
-        if (product.variants) {
-          product.variants.forEach((variant) => {
-            if (variant.attribute_values) {
-              Object.keys(variant.attribute_values).forEach((key) => {
-                allBrands.add(key);
-              });
-            }
-          });
-        }
       });
 
       setBrands(Array.from(allBrands).sort());
@@ -109,6 +107,93 @@ export default function AddPurchase({
       .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
       .map(([key, value]) => `${key}: ${value}`)
       .join(", ");
+  };
+
+  const getAttributeValues = (attributeName) => {
+    const attribute = attributes.find((attr) => attr.name === attributeName);
+    return Array.isArray(attribute?.active_values) ? attribute.active_values : [];
+  };
+
+  const normalizePurchaseAttributes = (rows = purchaseAttributeRows) => {
+    const output = {};
+
+    rows.forEach((row) => {
+      const attributeName = String(row.attribute_name || "").trim();
+      const attributeValue = String(row.attribute_value || "").trim();
+
+      if (attributeName && attributeValue) {
+        output[attributeName] = attributeValue;
+      }
+    });
+
+    return output;
+  };
+
+  const formatPurchaseAttributes = (attributeObject = {}) => {
+    const entries = Object.entries(attributeObject || {}).filter(
+      ([key, value]) => String(key || "").trim() && String(value || "").trim()
+    );
+
+    if (entries.length === 0) {
+      return "No attributes";
+    }
+
+    return entries.map(([key, value]) => `${key}: ${value}`).join(" | ");
+  };
+
+  const makePurchaseAttributeKey = (productId, attributeObject = {}) => {
+    const attributeKey = Object.entries(attributeObject || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}:${value}`)
+      .join("|");
+
+    return `${productId}-${attributeKey || "default"}`;
+  };
+
+  const resetPurchaseAttributePanel = () => {
+    setSelectedPurchaseProduct(null);
+    setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+    setPurchaseTrackingEnabled(false);
+    setPurchaseTrackingType("imei");
+  };
+
+  const selectProductForPurchase = (product) => {
+    setSelectedPurchaseProduct(product);
+    setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+    setPurchaseTrackingEnabled(Boolean(product?.is_tracking_enabled));
+    setPurchaseTrackingType(product?.tracking_type || "imei");
+    setProductSearch(product?.name || "");
+    setShowDropdown(false);
+  };
+
+  const addPurchaseAttributeRow = () => {
+    setPurchaseAttributeRows((prev) => [
+      ...prev,
+      { attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false },
+    ]);
+  };
+
+  const removePurchaseAttributeRow = (index) => {
+    setPurchaseAttributeRows((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      return next.length ? next : [{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }];
+    });
+  };
+
+  const updatePurchaseAttributeRow = (index, field, value) => {
+    setPurchaseAttributeRows((prev) => {
+      const next = [...prev];
+      const row = { ...next[index] };
+      row[field] = value;
+
+      if (field === "attribute_name") {
+        row.attribute_value = "";
+        row.manual_value = false;
+      }
+
+      next[index] = row;
+      return next;
+    });
   };
 
   // Get account icon
@@ -203,6 +288,8 @@ export default function AddPurchase({
       sale_price: item.sale_price,
       transportation_cost: item.transportation_cost || 0,
       attributes: item.attributes || {},
+      is_tracking_enabled: Boolean(item.is_tracking_enabled),
+      tracking_type: item.tracking_type || "imei",
       identifiers: item.is_tracking_enabled
         ? (item.identifiers || []).map((x) => String(x || "").trim())
         : [],
@@ -373,15 +460,7 @@ export default function AddPurchase({
       let filtered = products;
 
       if (selectedBrand) {
-        filtered = filtered.filter((product) => {
-          if (product.brand?.name === selectedBrand) return true;
-
-          return product.variants?.some(
-            (variant) =>
-              variant.attribute_values &&
-              Object.keys(variant.attribute_values).includes(selectedBrand)
-          );
-        });
+        filtered = filtered.filter((product) => product.brand?.name === selectedBrand);
       }
 
       filtered = filtered.filter(
@@ -401,15 +480,7 @@ export default function AddPurchase({
       setFilteredProducts(filtered);
       setShowDropdown(true);
     } else if (selectedBrand) {
-      const filtered = products.filter((product) => {
-        if (product.brand?.name === selectedBrand) return true;
-
-        return product.variants?.some(
-          (variant) =>
-            variant.attribute_values &&
-            Object.keys(variant.attribute_values).includes(selectedBrand)
-        );
-      });
+      const filtered = products.filter((product) => product.brand?.name === selectedBrand);
 
       setFilteredProducts(filtered);
       setShowDropdown(true);
@@ -464,82 +535,64 @@ export default function AddPurchase({
     );
   };
 
-  const addItem = (product, variant) => {
-    const hasAttributes =
-      variant.attribute_values &&
-      Object.keys(variant.attribute_values).length > 0;
+  const addSelectedPurchaseProductToCart = () => {
+    const product = selectedPurchaseProduct;
 
-    let variantIdentifier = "";
-    if (hasAttributes) {
-      const sortedAttributes = Object.entries(
-        variant.attribute_values || {}
-      ).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-
-      variantIdentifier = sortedAttributes
-        .map(([key, value]) => `${key}:${value}`)
-        .join("|");
-    } else {
-      variantIdentifier = "default";
+    if (!product) {
+      alert("Please select a product first");
+      return;
     }
 
+    const attributesObject = normalizePurchaseAttributes(purchaseAttributeRows);
+
+    if (Object.keys(attributesObject).length === 0) {
+      alert("Please add at least one attribute/value for this purchase item");
+      return;
+    }
+
+    const itemKey = makePurchaseAttributeKey(product.id, attributesObject);
+
     const existingItemIndex = selectedItems.findIndex(
-      (item) =>
-        item.product_id === product.id &&
-        item.variant_id === variant.id &&
-        item.variant_identifier === variantIdentifier
+      (item) => item.uniqueKey === itemKey
     );
 
     const units = getAvailableUnitsForProduct(product);
-    const defaultUnit = product.default_unit || units[0] || "piece";
+    const defaultUnit = purchaseTrackingEnabled ? "piece" : product.default_unit || units[0] || "piece";
     const saleUnits = getAvailableSaleUnits(product, defaultUnit);
-    const itemKey = `${product.id}-${variant.id}-${variantIdentifier}`;
 
     setProductUnits((prev) => ({ ...prev, [itemKey]: units }));
-    setSelectedUnits((prev) => ({
-      ...prev,
-      [itemKey]: product.is_tracking_enabled ? "piece" : defaultUnit,
-    }));
+    setSelectedUnits((prev) => ({ ...prev, [itemKey]: defaultUnit }));
     setUnitQuantities((prev) => ({ ...prev, [itemKey]: 1 }));
     setAvailableSaleUnits((prev) => ({ ...prev, [itemKey]: saleUnits }));
 
     if (existingItemIndex !== -1) {
       const updatedItems = [...selectedItems];
-      const existingItem = updatedItems[existingItemIndex];
-      const nextQty = (existingItem.unit_quantity || 1) + 1;
+      const existingItem = { ...updatedItems[existingItemIndex] };
+      const nextQty = (Number(existingItem.unit_quantity) || 1) + 1;
 
       existingItem.unit_quantity = nextQty;
       existingItem.quantity = nextQty;
-      existingItem.total_price = nextQty * (existingItem.unit_price || 0);
+      existingItem.total_price = nextQty * (Number(existingItem.unit_price) || 0);
 
       if (existingItem.is_tracking_enabled) {
         existingItem.unit = "piece";
-        existingItem.identifiers = normalizeIdentifiersByQty(
-          existingItem,
-          nextQty
-        );
+        existingItem.identifiers = normalizeIdentifiersByQty(existingItem, nextQty);
       }
 
+      updatedItems[existingItemIndex] = existingItem;
       setSelectedItems(updatedItems);
       setUnitQuantities((prev) => ({ ...prev, [itemKey]: nextQty }));
     } else {
-      const unitCost = Number(variant.unit_cost || 0);
-      const salePrice = Number(variant.selling_price || unitCost * 1.2);
-
-      let variantDisplayName = formatVariantName(variant);
-      let brandName = product.brand?.name || "Unknown";
-
-      if (
-        selectedBrand &&
-        variant.attribute_values &&
-        variant.attribute_values[selectedBrand]
-      ) {
-        brandName = selectedBrand;
-      }
+      const firstVariant = product?.variants?.[0] || {};
+      const unitCost = Number(firstVariant?.stock?.purchase_price || firstVariant?.unit_cost || 0);
+      const salePrice = Number(firstVariant?.stock?.sale_price || firstVariant?.selling_price || unitCost * 1.2 || 0);
+      const variantDisplayName = formatPurchaseAttributes(attributesObject);
+      const brandName = product.brand?.name || "Unknown";
 
       const newItem = {
         uniqueKey: itemKey,
         product_id: product.id,
-        variant_id: variant.id,
+        variant_id: null,
         product_name: product.name,
         product_no: product.product_no,
         has_warranty: product.has_warranty,
@@ -547,24 +600,25 @@ export default function AddPurchase({
         warranty_duration_type: product.warranty_duration_type,
         brand_name: brandName,
         variant_name: variantDisplayName,
-        variant_identifier: variantIdentifier,
+        variant_identifier: itemKey,
         selected_brand: selectedBrand,
         quantity: 1,
         unit_quantity: 1,
-        unit: product.is_tracking_enabled ? "piece" : defaultUnit,
+        unit: defaultUnit,
         unit_price: unitCost,
         sale_price: salePrice,
         transportation_cost: 0,
         total_price: unitCost,
-        attributes: variant.attribute_values || {},
-        is_tracking_enabled: !!product.is_tracking_enabled,
-        tracking_type: product.tracking_type || null,
-        identifiers: product.is_tracking_enabled ? [""] : [],
+        attributes: attributesObject,
+        is_tracking_enabled: Boolean(purchaseTrackingEnabled),
+        tracking_type: purchaseTrackingType || "imei",
+        identifiers: purchaseTrackingEnabled ? [""] : [],
       };
 
       setSelectedItems((prev) => [...prev, newItem]);
     }
 
+    resetPurchaseAttributePanel();
     setProductSearch("");
     setShowDropdown(false);
     setSelectedBrand(null);
@@ -624,7 +678,7 @@ export default function AddPurchase({
 
       setUnitQuantities((prev) => ({ ...prev, [itemKey]: numericValue }));
 
-      if (item.is_tracking_enabled) {
+      if (item.is_tracking_enabled || (Array.isArray(item.identifiers) && item.identifiers.length > 0)) {
         item.unit = "piece";
         item.identifiers = normalizeIdentifiersByQty(item, numericValue);
       }
@@ -770,7 +824,7 @@ export default function AddPurchase({
           return fail(`Item "${item.product_name}" has invalid quantity`);
         }
 
-        if (item.is_tracking_enabled) {
+        if (item.is_tracking_enabled || (Array.isArray(item.identifiers) && item.identifiers.length > 0)) {
           const qty = parseInt(item.unit_quantity || 0, 10);
 
           if (item.unit !== "piece") {
@@ -831,6 +885,8 @@ export default function AddPurchase({
       total_price: item.total_price,
       transportation_cost: item.transportation_cost || 0,
       attributes: item.attributes || {},
+      is_tracking_enabled: Boolean(item.is_tracking_enabled),
+      tracking_type: item.tracking_type || "imei",
       identifiers: item.is_tracking_enabled
         ? (item.identifiers || []).map((x) => String(x || "").trim()).filter(Boolean)
         : [],
@@ -1278,50 +1334,192 @@ export default function AddPurchase({
                         )}
                       </div>
 
-                      {product.variants?.map((variant) => {
-                        const variantMatchesBrand = () => {
-                          if (!selectedBrand) return true;
+                      <div
+                        className="p-3 hover:bg-red-50 cursor-pointer flex justify-between items-center transition-colors border-b border-dashed border-gray-100 last:border-none"
+                        onClick={() => selectProductForPurchase(product)}
+                      >
+                        <div
+                          style={{ borderRadius: "0.375rem" }}
+                          className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2"
+                        >
+                          <span className="font-bold text-xs text-gray-800 truncate">
+                            Select product and add purchase attributes
+                          </span>
+                          <span className="text-[10px] text-gray-500 truncate">
+                            Color, Storage, Battery Health, Location, Box/Tray, Category, Status etc.
+                          </span>
+                        </div>
 
-                          const attributeKeys = Object.keys(
-                            variant.attribute_values || {}
-                          );
-
-                          return (
-                            attributeKeys.includes(selectedBrand) ||
-                            product.brand?.name === selectedBrand
-                          );
-                        };
-
-                        if (!variantMatchesBrand()) return null;
-
-                        const variantName = formatVariantName(variant);
-
-                        return (
-                          <div
-                            key={variant.id}
-                            className="p-2 hover:bg-red-50 cursor-pointer flex justify-between items-center transition-colors border-b border-dashed border-gray-100 last:border-none"
-                            onClick={() => addItem(product, variant)}
-                          >
-                            <div
-                              style={{ borderRadius: "0.375rem" }}
-                              className="flex flex-col max-w-[70%] bg-[#FEF2F2] py-1 px-2"
-                            >
-                              <span className="font-bold text-xs text-gray-800 truncate">
-                                {variantName}
-                              </span>
-                            </div>
-
-                            <div className="font-mono text-xs font-black text-gray-500">
-                              ৳{formatCurrency(variant.unit_cost)}
-                            </div>
-                          </div>
-                        );
-                      })}
+                        <div className="font-mono text-xs font-black text-gray-500">
+                          Add
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {selectedPurchaseProduct && (
+              <div className="mb-4 rounded-2xl border-2 border-blue-100 bg-blue-50/40 p-4">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-black uppercase tracking-widest text-xs text-gray-900 flex items-center gap-2">
+                      <Package size={16} className="text-blue-600" />
+                      Purchase Attribute Builder
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Product: <span className="font-black">{selectedPurchaseProduct.name}</span>
+                    </p>
+                  </div>
+
+                  <button type="button" onClick={resetPurchaseAttributePanel} className="btn btn-xs btn-ghost">
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {purchaseAttributeRows.map((row, index) => {
+                    const values = getAttributeValues(row.attribute_name);
+
+                    return (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end bg-white border border-blue-100 rounded-xl p-3">
+                        <div className="md:col-span-4">
+                          <label className="label py-0">
+                            <span className="label-text text-xs font-black text-gray-500 uppercase">Attribute</span>
+                          </label>
+
+                          {row.manual_attribute ? (
+                            <input
+                              type="text"
+                              className="input input-bordered input-sm w-full"
+                              value={row.attribute_name}
+                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_name", e.target.value)}
+                              placeholder="Type new attribute"
+                            />
+                          ) : (
+                            <select
+                              className="select select-bordered select-sm w-full"
+                              value={row.attribute_name}
+                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_name", e.target.value)}
+                            >
+                              <option value="">Select attribute</option>
+                              {attributes.map((attribute) => (
+                                <option key={attribute.id} value={attribute.name}>
+                                  {attribute.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div className="md:col-span-2 flex items-center gap-2 pb-1">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-xs checkbox-primary"
+                            checked={row.manual_attribute}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPurchaseAttributeRows((prev) => {
+                                const next = [...prev];
+                                next[index] = {
+                                  ...next[index],
+                                  manual_attribute: checked,
+                                  attribute_name: "",
+                                  attribute_value: "",
+                                  manual_value: checked ? true : next[index].manual_value,
+                                };
+                                return next;
+                              });
+                            }}
+                          />
+                          <span className="text-[10px] font-bold text-gray-500">New attribute</span>
+                        </div>
+
+                        <div className="md:col-span-4">
+                          <label className="label py-0">
+                            <span className="label-text text-xs font-black text-gray-500 uppercase">Value</span>
+                          </label>
+
+                          {row.manual_value || row.manual_attribute ? (
+                            <input
+                              type="text"
+                              className="input input-bordered input-sm w-full"
+                              value={row.attribute_value}
+                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_value", e.target.value)}
+                              placeholder="Type value"
+                            />
+                          ) : (
+                            <select
+                              className="select select-bordered select-sm w-full"
+                              value={row.attribute_value}
+                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_value", e.target.value)}
+                              disabled={!row.attribute_name}
+                            >
+                              <option value="">Select value</option>
+                              {values.map((value) => (
+                                <option key={value.id} value={value.value}>
+                                  {value.value}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div className="md:col-span-1 flex items-center gap-2 pb-1">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-xs checkbox-primary"
+                            checked={row.manual_value || row.manual_attribute}
+                            disabled={row.manual_attribute}
+                            onChange={(e) => updatePurchaseAttributeRow(index, "manual_value", e.target.checked)}
+                          />
+                          <span className="text-[10px] font-bold text-gray-500">Manual</span>
+                        </div>
+
+                        <div className="md:col-span-1 flex justify-end">
+                          <button type="button" onClick={() => removePurchaseAttributeRow(index)} className="btn btn-xs btn-ghost text-red-600">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <button type="button" onClick={addPurchaseAttributeRow} className="btn btn-sm btn-outline">
+                    <Plus size={14} /> Add More Attribute
+                  </button>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs font-black uppercase text-gray-600">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm checkbox-warning"
+                        checked={purchaseTrackingEnabled}
+                        onChange={(e) => setPurchaseTrackingEnabled(e.target.checked)}
+                      />
+                      Need IMEI / Serial
+                    </label>
+
+                    <select
+                      className="select select-bordered select-sm"
+                      value={purchaseTrackingType}
+                      onChange={(e) => setPurchaseTrackingType(e.target.value)}
+                      disabled={!purchaseTrackingEnabled}
+                    >
+                      <option value="imei">IMEI</option>
+                      <option value="serial">Serial</option>
+                    </select>
+
+                    <button type="button" onClick={addSelectedPurchaseProductToCart} className="btn btn-sm bg-red-600 text-white hover:bg-red-700">
+                      <Plus size={14} /> Add To Cart
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {selectedItems.length > 0 ? (
               <div className="space-y-3">
