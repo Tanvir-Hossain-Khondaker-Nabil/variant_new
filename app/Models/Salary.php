@@ -58,7 +58,10 @@ class Salary extends Model
         'working_days',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'advance_deduction',
+'late_fee_deduction',
+'final_salary',
     ];
 
     protected $casts = [
@@ -89,7 +92,10 @@ class Salary extends Model
         'leave_days' => 'integer',
         'late_hours' => 'decimal:2',
         'overtime_hours' => 'decimal:2',
-        'working_days' => 'integer'
+        'working_days' => 'integer',
+        'advance_deduction' => 'decimal:2',
+'late_fee_deduction' => 'decimal:2',
+'final_salary' => 'decimal:2',
     ];
 
     use BelongsToTenant;

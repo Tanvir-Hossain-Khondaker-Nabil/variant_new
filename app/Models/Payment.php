@@ -28,7 +28,9 @@ class Payment extends Model
         'status',
         'created_by',
         'outlet_id',
-        'owner_id'
+        'owner_id',
+        'reference_type',
+'reference_id',
     ];
 
     use BelongsToTenant;

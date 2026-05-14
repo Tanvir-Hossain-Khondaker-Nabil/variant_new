@@ -79,6 +79,11 @@ class Employee extends Model
         return $this->hasMany(EmployeeAward::class);
     }
 
+    public function salaryAdvances()
+{
+    return $this->hasMany(EmployeeSalaryAdvance::class);
+}
+
     // Accessors
     public function getFormattedSalaryAttribute()
     {
