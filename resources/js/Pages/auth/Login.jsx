@@ -62,7 +62,7 @@ function Login() {
         <div className="text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-black/10 bg-white">
             <span className="h-2.5 w-2.5 rounded-full bg-green-700" />
-            <span className="text-xs font-semibold text-gray-700">TotalBiz POS</span>
+            <span className="text-xs font-semibold text-gray-700">Variant</span>
           </div>
 
           <h1 className="mt-4 text-2xl font-extrabold text-gray-900 tracking-tight">
@@ -169,7 +169,7 @@ function Login() {
         </form>
 
         <div className="mt-6 text-center text-xs text-gray-500">
-          © {new Date().getFullYear()} TotalBiz POS • All rights reserved
+          © {new Date().getFullYear()} Variant • All rights reserved
         </div>
       </div>
     </div>
