@@ -46,6 +46,16 @@ export default function PaymentIndex({ payments, filters, isShadowUser }) {
         }
     };
 
+    const openDatePicker = (e) => {
+        if (typeof e.currentTarget.showPicker === "function") {
+            try {
+                e.currentTarget.showPicker();
+            } catch (error) {
+                e.currentTarget.focus();
+            }
+        }
+    };
+
     const clearFilters = () => {
         filterForm.setData({ search: "", start_date: "", end_date: "" });
         setTimeout(() => {
@@ -431,7 +441,7 @@ export default function PaymentIndex({ payments, filters, isShadowUser }) {
                                         onChange={(e) => filterForm.setData("search", e.target.value)}
                                         onKeyPress={handleKeyPress}
                                     />
-                                    <Search className="absolute right-2 top-2 text-gray-400" size={16} />
+                                    <Search className="absolute right-2 top-2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
                             </fieldset>
 
@@ -441,11 +451,12 @@ export default function PaymentIndex({ payments, filters, isShadowUser }) {
                                 <div className="relative">
                                     <input
                                         type="date"
-                                        className="input input-sm w-full"
+                                        className="input input-sm w-full cursor-pointer"
                                         value={formatDateForInput(filterForm.data.start_date)}
+                                        onClick={openDatePicker}
                                         onChange={(e) => filterForm.setData("start_date", e.target.value)}
                                     />
-                                    <Calendar className="absolute right-2 top-2 text-gray-400" size={16} />
+                                    <Calendar className="absolute right-2 top-2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
                             </fieldset>
 
@@ -455,12 +466,13 @@ export default function PaymentIndex({ payments, filters, isShadowUser }) {
                                 <div className="relative">
                                     <input
                                         type="date"
-                                        className="input input-sm w-full"
+                                        className="input input-sm w-full cursor-pointer"
                                         value={formatDateForInput(filterForm.data.end_date)}
+                                        onClick={openDatePicker}
                                         onChange={(e) => filterForm.setData("end_date", e.target.value)}
                                         min={formatDateForInput(filterForm.data.start_date)}
                                     />
-                                    <Calendar className="absolute right-2 top-2 text-gray-400" size={16} />
+                                    <Calendar className="absolute right-2 top-2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
                             </fieldset>
                         </div>

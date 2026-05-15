@@ -124,6 +124,15 @@ class PickupHoldController extends Controller
         return $purchaseNo;
     }
 
+    private function nextProductNo(): string
+    {
+        do {
+            $productNo = 'PRD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(5));
+        } while (Product::where('product_no', $productNo)->exists());
+
+        return $productNo;
+    }
+
     private function recalculateHoldTotals(PickupHold $hold): void
     {
         $items = PickupHoldItem::where('pickup_hold_id', $hold->id)->get();
@@ -304,6 +313,102 @@ class PickupHoldController extends Controller
         ]);
     }
 
+    private function resolvePickupProduct(array $row, string $direction): Product
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | Outgoing
+        |--------------------------------------------------------------------------
+        | My own stock goes to nearby shop.
+        | Product must already exist because stock must exist.
+        |--------------------------------------------------------------------------
+        */
+        if ($direction === 'outgoing') {
+            if (empty($row['product_id'])) {
+                throw new \Exception('Product is required for outgoing pickup.');
+            }
+
+            return Product::findOrFail($row['product_id']);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Incoming
+        |--------------------------------------------------------------------------
+        | Nearby shop gives product to me.
+        | Existing product_id = use existing product.
+        | No product_id = create new product automatically from product_name.
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($row['product_id'])) {
+            return Product::findOrFail($row['product_id']);
+        }
+
+        $productName = trim((string) ($row['product_name'] ?? ''));
+
+        if ($productName === '') {
+            throw new \Exception('Product name is required when adding new incoming pickup product.');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Avoid duplicate product by same name in same outlet.
+        |--------------------------------------------------------------------------
+        */
+        $existingProduct = Product::where('name', $productName)
+            ->when($this->userOutletId(), function ($query) {
+                $query->where('outlet_id', $this->userOutletId());
+            })
+            ->first();
+
+        if ($existingProduct) {
+            return $existingProduct;
+        }
+
+        $unitType = $row['unit_type'] ?? 'piece';
+        $defaultUnit = $row['default_unit'] ?? ($row['unit'] ?? 'piece');
+
+        return Product::create([
+            'name' => $productName,
+            'product_no' => $row['product_no'] ?? $this->nextProductNo(),
+            'category_id' => $row['category_id'] ?? null,
+            'brand_id' => $row['brand_id'] ?? null,
+            'description' => $row['description'] ?? 'Auto created from incoming pickup hold',
+            'created_by' => Auth::id(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Safe product defaults based on your Product model fillable.
+            |--------------------------------------------------------------------------
+            */
+            'product_type' => $row['product_type'] ?? 'in_house',
+            'in_house_cost' => (float) ($row['unit_price'] ?? 0),
+            'in_house_shadow_cost' => 0,
+            'in_house_sale_price' => (float) ($row['sale_price'] ?? 0),
+            'in_house_shadow_sale_price' => 0,
+            'in_house_initial_stock' => 0,
+
+            'outlet_id' => $this->userOutletId(),
+            'photo' => null,
+
+            'unit_type' => $unitType,
+            'default_unit' => $defaultUnit,
+            'is_fraction_allowed' => (bool) ($row['is_fraction_allowed'] ?? false),
+            'min_sale_unit' => $row['min_sale_unit'] ?? $defaultUnit,
+
+            'type' => $row['type'] ?? 'local',
+            'owner_id' => $this->userOwnerId(),
+
+            'has_warranty' => (bool) ($row['has_warranty'] ?? false),
+            'warranty_duration' => $row['warranty_duration'] ?? null,
+            'warranty_duration_type' => $row['warranty_duration_type'] ?? null,
+            'warranty_terms' => $row['warranty_terms'] ?? null,
+
+            'is_tracking_enabled' => (bool) ($row['is_tracking_enabled'] ?? false),
+            'tracking_type' => $row['tracking_type'] ?? null,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $filters = $request->only([
@@ -401,7 +506,34 @@ class PickupHoldController extends Controller
             'notes' => 'nullable|string|max:2000',
             'items' => 'required|array|min:1',
 
-            'items.*.product_id' => 'required|exists:products,id',
+            /*
+            |--------------------------------------------------------------------------
+            | product_id nullable because incoming pickup can create new product.
+            |--------------------------------------------------------------------------
+            */
+            'items.*.product_id' => 'nullable|exists:products,id',
+            'items.*.product_name' => 'nullable|string|max:255',
+            'items.*.product_no' => 'nullable|string|max:255',
+            'items.*.category_id' => 'nullable|exists:categories,id',
+            'items.*.brand_id' => 'nullable|exists:brands,id',
+            'items.*.description' => 'nullable|string|max:2000',
+
+            'items.*.product_type' => 'nullable|string|max:100',
+            'items.*.type' => 'nullable|string|max:100',
+
+            'items.*.unit_type' => 'nullable|string|max:50',
+            'items.*.default_unit' => 'nullable|string|max:50',
+            'items.*.is_fraction_allowed' => 'nullable|boolean',
+            'items.*.min_sale_unit' => 'nullable|string|max:50',
+
+            'items.*.has_warranty' => 'nullable|boolean',
+            'items.*.warranty_duration' => 'nullable|integer|min:0',
+            'items.*.warranty_duration_type' => 'nullable|string|max:50',
+            'items.*.warranty_terms' => 'nullable|string|max:2000',
+
+            'items.*.is_tracking_enabled' => 'nullable|boolean',
+            'items.*.tracking_type' => 'nullable|string|in:imei,serial',
+
             'items.*.variant_id' => 'nullable|exists:variants,id',
             'items.*.warehouse_id' => 'nullable|exists:warehouses,id',
             'items.*.stock_id' => 'nullable|exists:stocks,id',
@@ -433,7 +565,7 @@ class PickupHoldController extends Controller
             ]);
 
             foreach ($validated['items'] as $row) {
-                $product = Product::findOrFail($row['product_id']);
+                $product = $this->resolvePickupProduct($row, $direction);
 
                 $unit = $row['unit'] ?? ($product->default_unit ?? 'piece');
                 $quantity = (float) ($row['quantity'] ?? 0);
@@ -466,14 +598,6 @@ class PickupHoldController extends Controller
                         throw new \Exception('Selected stock variant mismatch.');
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | FIXED STOCK CHECK
-                    |--------------------------------------------------------------------------
-                    | Stock has quantity 9 but available_base_quantity may be 0.
-                    | So available is calculated from actual stock.quantity.
-                    |--------------------------------------------------------------------------
-                    */
                     $availableBaseQuantity = $this->getStockAvailableBaseQuantity($stock, $product);
 
                     if ($baseQuantity > $availableBaseQuantity) {
@@ -643,15 +767,6 @@ class PickupHoldController extends Controller
             );
 
             if ($hold->direction === 'outgoing') {
-                /*
-                |--------------------------------------------------------------------------
-                | Outgoing Return
-                |--------------------------------------------------------------------------
-                | Shop returns my product.
-                | Product was deducted during hold create, so add it back.
-                |--------------------------------------------------------------------------
-                */
-
                 $stock = Stock::lockForUpdate()->findOrFail($item->stock_id);
 
                 $currentBaseQuantity = $this->getStockAvailableBaseQuantity($stock, $product);
@@ -661,15 +776,6 @@ class PickupHoldController extends Controller
             }
 
             if ($hold->direction === 'incoming') {
-                /*
-                |--------------------------------------------------------------------------
-                | Incoming Return
-                |--------------------------------------------------------------------------
-                | I return shop product to shop.
-                | Product was added during hold create, so remove it.
-                |--------------------------------------------------------------------------
-                */
-
                 $stock = Stock::lockForUpdate()->findOrFail($item->stock_id);
 
                 $currentBaseQuantity = $this->getStockAvailableBaseQuantity($stock, $product);
@@ -785,16 +891,6 @@ class PickupHoldController extends Controller
             $purchaseItem = null;
 
             if ($hold->direction === 'outgoing') {
-                /*
-                |--------------------------------------------------------------------------
-                | Outgoing Sold
-                |--------------------------------------------------------------------------
-                | Neighbor shop took my product and sold/kept it.
-                | Stock was already deducted at hold create.
-                | So create Sale + SaleItem only. Do NOT deduct stock again.
-                |--------------------------------------------------------------------------
-                */
-
                 $customer = $this->ensureShopCustomer($hold->shop);
 
                 $sale = Sale::create([
@@ -806,17 +902,7 @@ class PickupHoldController extends Controller
                     'grand_total' => $totalPrice,
                     'paid_amount' => $paidAmount,
                     'due_amount' => max(0, $totalPrice - $paidAmount),
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | IMPORTANT FIX
-                    |--------------------------------------------------------------------------
-                    | Do not use "none".
-                    | Your sales.payment_type enum does not allow "none".
-                    |--------------------------------------------------------------------------
-                    */
                     'payment_type' => 'cash',
-
                     'account_id' => $accountId,
                     'status' => $paidAmount >= $totalPrice
                         ? 'paid'
@@ -883,17 +969,6 @@ class PickupHoldController extends Controller
             }
 
             if ($hold->direction === 'incoming') {
-                /*
-                |--------------------------------------------------------------------------
-                | Incoming Sold / Confirm
-                |--------------------------------------------------------------------------
-                | Neighbor shop gave product to me on hold.
-                | Stock was already added at hold create.
-                | When sold/kept, create Purchase + PurchaseItem only.
-                | Do NOT add stock again.
-                |--------------------------------------------------------------------------
-                */
-
                 $supplier = $this->ensureShopSupplier($hold->shop);
 
                 $purchase = Purchase::create([
@@ -908,16 +983,7 @@ class PickupHoldController extends Controller
                         ? 'paid'
                         : ($paidAmount > 0 ? 'partial' : 'unpaid'),
                     'status' => 'completed',
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | IMPORTANT FIX
-                    |--------------------------------------------------------------------------
-                    | Do not use "none" here also.
-                    |--------------------------------------------------------------------------
-                    */
                     'payment_type' => 'cash',
-
                     'type' => 'local',
                     'created_by' => Auth::id(),
                     'outlet_id' => $this->userOutletId(),

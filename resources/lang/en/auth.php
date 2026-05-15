@@ -165,7 +165,7 @@ return [
     'investments' => 'Investments',
     'add_investment' => 'Add Investment',
     'investment_returns' => 'Investment Returns',
-    
+
     // Categories
     'category_investments' => 'Investments',
     'category_subscriptions' => 'Subscriptions',
@@ -175,5 +175,24 @@ return [
     'product_ledger' => 'Product Ledger',
     'pickup_holds' => 'Hold',
     'shops' => 'Shop',
-    'add_pickup_hold' => 'Add pickup hold'
+    'add_pickup_hold' => 'Add pickup hold',
+    'all_sales_reports' => 'All Sales Reports',
+    'all_purchase_reports' => 'All Purchase Reports',
+    'all_sales_items_reports' => 'All Sales Items Reports',
+    'all_purchase_items_reports' => 'All Purchase Items Reports',
+    'all_sales_return_reports' => 'All Sales Return Reports',
+    'all_purchase_return_reports' => 'All Purchase Return Reports',
+    'all_damages_reports' => 'All Damages Reports',
+    'all_customer_reports' => 'All Customer Reports',
+    'all_supplier_reports' => 'All Supplier Reports',
+    'all_transaction_reports' => 'All Transaction Reports',
+    'all_account_reports' => 'All Account Reports',
+    'all_product_reports' => 'All Product Reports',
+    'all_expense_reports' => 'All Expense Reports',
+
+    // HR
+    'salary_advance' => 'Salary Advance',
+
+    // Accounts
+    'users_deposit' => 'Users Deposit',
 ];

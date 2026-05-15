@@ -145,10 +145,40 @@ return [
     'investments' => 'বিনিয়োগ',
     'add_investment' => 'বিনিয়োগ যোগ করুন',
     'investment_returns' => 'বিনিয়োগ রিটার্ন',
-    
+
     // Categories
     'category_investments' => 'বিনিয়োগ',
     'category_subscriptions' => 'সাবস্ক্রিপশন',
     'damages_list' => 'ক্ষতির তালিকা',
     'product_ledger' => 'পণ্য খাতা',
+
+    // Reports
+    'all_sales_reports' => 'সকল বিক্রয় রিপোর্ট',
+    'all_purchase_reports' => 'সকল ক্রয় রিপোর্ট',
+    'all_sales_items_reports' => 'সকল বিক্রয় আইটেম রিপোর্ট',
+    'all_purchase_items_reports' => 'সকল ক্রয় আইটেম রিপোর্ট',
+    'all_sales_return_reports' => 'সকল বিক্রয় ফেরত রিপোর্ট',
+    'all_purchase_return_reports' => 'সকল ক্রয় ফেরত রিপোর্ট',
+    'all_damages_reports' => 'সকল ক্ষতির রিপোর্ট',
+    'all_customer_reports' => 'সকল গ্রাহক রিপোর্ট',
+    'all_supplier_reports' => 'সকল সরবরাহকারী রিপোর্ট',
+    'all_transaction_reports' => 'সকল লেনদেন রিপোর্ট',
+    'all_account_reports' => 'সকল অ্যাকাউন্ট রিপোর্ট',
+    'all_product_reports' => 'সকল পণ্য রিপোর্ট',
+    'all_expense_reports' => 'সকল ব্যয় রিপোর্ট',
+
+    // HR
+    'salary_advance' => 'বেতন অগ্রিম',
+
+    // Accounts
+    'users_deposit' => 'ব্যবহারকারীর ডিপোজিট',
+
+
+    'category_system' => 'সিস্টেম',
+    'category_reports' => 'সকল রিপোর্ট',
+    'category_accounts' => 'অ্যাকাউন্টস',
+    'expense_category' => 'ব্যয় বিভাগ',
+    'pickup_holds' => 'হোল্ড',
+    'shops' => 'শপ',
+    'add_pickup_hold' => 'পিকআপ হোল্ড যোগ করুন',
 ];

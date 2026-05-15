@@ -851,10 +851,7 @@ export default function PurchaseShow({ purchase, isShadowUser = false, businessP
                                             textAlign: "right",
                                         }}
                                     >
-                                        {invoiceDateTime?.datePart}{" "}
-                                        <span style={{ marginLeft: "5mm" }}>
-                                            {invoiceDateTime?.timePart}
-                                        </span>
+                                        {invoiceDateTime?.datePart}
                                     </div>
                                 </div>
 

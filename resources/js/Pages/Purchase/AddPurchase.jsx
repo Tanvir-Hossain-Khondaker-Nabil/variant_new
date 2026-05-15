@@ -43,6 +43,7 @@ export default function AddPurchase({
   },
 }) {
   const { t, locale } = useTranslation();
+  const MANUAL_VALUE_OPTION = "__manual_new_value__";
 
   const [selectedItems, setSelectedItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
@@ -61,7 +62,14 @@ export default function AddPurchase({
 
   // Dynamic purchase attribute state
   const [selectedPurchaseProduct, setSelectedPurchaseProduct] = useState(null);
-  const [purchaseAttributeRows, setPurchaseAttributeRows] = useState([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+  const [purchaseAttributeRows, setPurchaseAttributeRows] = useState([
+    {
+      attribute_name: "",
+      attribute_value: "",
+      manual_value: false,
+      manual_attribute_value: "",
+    },
+  ]);
   const [purchaseTrackingEnabled, setPurchaseTrackingEnabled] = useState(false);
   const [purchaseTrackingType, setPurchaseTrackingType] = useState("imei");
   const [purchaseCondition, setPurchaseCondition] = useState("new");
@@ -121,7 +129,9 @@ export default function AddPurchase({
 
     rows.forEach((row) => {
       const attributeName = String(row.attribute_name || "").trim();
-      const attributeValue = String(row.attribute_value || "").trim();
+      const attributeValue = row.manual_value
+        ? String(row.manual_attribute_value || "").trim()
+        : String(row.attribute_value || "").trim();
 
       if (attributeName && attributeValue) {
         output[attributeName] = attributeValue;
@@ -154,7 +164,14 @@ export default function AddPurchase({
 
   const resetPurchaseAttributePanel = () => {
     setSelectedPurchaseProduct(null);
-    setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+    setPurchaseAttributeRows([
+      {
+        attribute_name: "",
+        attribute_value: "",
+        manual_value: false,
+        manual_attribute_value: "",
+      },
+    ]);
     setPurchaseTrackingEnabled(false);
     setPurchaseTrackingType("imei");
     setPurchaseCondition("new");
@@ -163,7 +180,14 @@ export default function AddPurchase({
 
   const selectProductForPurchase = (product) => {
     setSelectedPurchaseProduct(product);
-    setPurchaseAttributeRows([{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }]);
+    setPurchaseAttributeRows([
+      {
+        attribute_name: "",
+        attribute_value: "",
+        manual_value: false,
+        manual_attribute_value: "",
+      },
+    ]);
     setPurchaseTrackingEnabled(Boolean(product?.is_tracking_enabled));
     setPurchaseTrackingType(product?.tracking_type || "imei");
     setPurchaseCondition("new");
@@ -175,14 +199,28 @@ export default function AddPurchase({
   const addPurchaseAttributeRow = () => {
     setPurchaseAttributeRows((prev) => [
       ...prev,
-      { attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false },
+      {
+        attribute_name: "",
+        attribute_value: "",
+        manual_value: false,
+        manual_attribute_value: "",
+      },
     ]);
   };
 
   const removePurchaseAttributeRow = (index) => {
     setPurchaseAttributeRows((prev) => {
       const next = prev.filter((_, i) => i !== index);
-      return next.length ? next : [{ attribute_name: "", attribute_value: "", manual_attribute: false, manual_value: false }];
+      return next.length
+        ? next
+        : [
+            {
+              attribute_name: "",
+              attribute_value: "",
+              manual_value: false,
+              manual_attribute_value: "",
+            },
+          ];
     });
   };
 
@@ -190,11 +228,31 @@ export default function AddPurchase({
     setPurchaseAttributeRows((prev) => {
       const next = [...prev];
       const row = { ...next[index] };
-      row[field] = value;
 
       if (field === "attribute_name") {
+        row.attribute_name = value;
         row.attribute_value = "";
         row.manual_value = false;
+        row.manual_attribute_value = "";
+      } else if (field === "attribute_value") {
+        if (value === MANUAL_VALUE_OPTION) {
+          row.attribute_value = "";
+          row.manual_value = true;
+          row.manual_attribute_value = "";
+        } else {
+          row.attribute_value = value;
+          row.manual_value = false;
+          row.manual_attribute_value = "";
+        }
+      } else if (field === "manual_attribute_value") {
+        row.manual_attribute_value = value;
+        row.manual_value = true;
+      } else if (field === "manual_value") {
+        row.manual_value = Boolean(value);
+        row.attribute_value = "";
+        row.manual_attribute_value = "";
+      } else {
+        row[field] = value;
       }
 
       next[index] = row;
@@ -1476,92 +1534,75 @@ export default function AddPurchase({
                             <span className="label-text text-xs font-black text-gray-500 uppercase">Attribute</span>
                           </label>
 
-                          {row.manual_attribute ? (
-                            <input
-                              type="text"
-                              className="input input-bordered input-sm w-full"
-                              value={row.attribute_name}
-                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_name", e.target.value)}
-                              placeholder="Type new attribute"
-                            />
-                          ) : (
-                            <select
-                              className="select select-bordered select-sm w-full"
-                              value={row.attribute_name}
-                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_name", e.target.value)}
-                            >
-                              <option value="">Select attribute</option>
-                              {attributes.map((attribute) => (
-                                <option key={attribute.id} value={attribute.name}>
-                                  {attribute.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                          <select
+                            className="select select-bordered select-sm w-full"
+                            value={row.attribute_name}
+                            onChange={(e) => updatePurchaseAttributeRow(index, "attribute_name", e.target.value)}
+                          >
+                            <option value="">Select attribute</option>
+                            {attributes.map((attribute) => (
+                              <option key={attribute.id} value={attribute.name}>
+                                {attribute.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
-                        <div className="md:col-span-2 flex items-center gap-2 pb-1">
-                          <input
-                            type="checkbox"
-                            className="checkbox checkbox-xs checkbox-primary"
-                            checked={row.manual_attribute}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setPurchaseAttributeRows((prev) => {
-                                const next = [...prev];
-                                next[index] = {
-                                  ...next[index],
-                                  manual_attribute: checked,
-                                  attribute_name: "",
-                                  attribute_value: "",
-                                  manual_value: checked ? true : next[index].manual_value,
-                                };
-                                return next;
-                              });
-                            }}
-                          />
-                          <span className="text-[10px] font-bold text-gray-500">New attribute</span>
-                        </div>
-
-                        <div className="md:col-span-4">
+                        <div className={row.manual_value ? "md:col-span-3" : "md:col-span-6"}>
                           <label className="label py-0">
                             <span className="label-text text-xs font-black text-gray-500 uppercase">Value</span>
                           </label>
 
-                          {row.manual_value || row.manual_attribute ? (
+                          <select
+                            className="select select-bordered select-sm w-full"
+                            value={row.manual_value ? MANUAL_VALUE_OPTION : row.attribute_value}
+                            onChange={(e) => updatePurchaseAttributeRow(index, "attribute_value", e.target.value)}
+                            disabled={!row.attribute_name}
+                          >
+                            <option value="">Select value</option>
+                            {values.map((value) => (
+                              <option key={value.id} value={value.value}>
+                                {value.value}
+                              </option>
+                            ))}
+                            {row.attribute_name && (
+                              <option value={MANUAL_VALUE_OPTION}>+ New value</option>
+                            )}
+                          </select>
+                        </div>
+
+                        {row.manual_value && (
+                          <div className="md:col-span-3">
+                            <label className="label py-0">
+                              <span className="label-text text-xs font-black text-gray-500 uppercase">Manual Value</span>
+                            </label>
+
                             <input
                               type="text"
                               className="input input-bordered input-sm w-full"
-                              value={row.attribute_value}
-                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_value", e.target.value)}
-                              placeholder="Type value"
+                              value={row.manual_attribute_value || ""}
+                              onChange={(e) =>
+                                updatePurchaseAttributeRow(
+                                  index,
+                                  "manual_attribute_value",
+                                  e.target.value
+                                )
+                              }
+                              placeholder={`Type new ${row.attribute_name} value`}
+                              autoFocus
                             />
-                          ) : (
-                            <select
-                              className="select select-bordered select-sm w-full"
-                              value={row.attribute_value}
-                              onChange={(e) => updatePurchaseAttributeRow(index, "attribute_value", e.target.value)}
-                              disabled={!row.attribute_name}
-                            >
-                              <option value="">Select value</option>
-                              {values.map((value) => (
-                                <option key={value.id} value={value.value}>
-                                  {value.value}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
+                          </div>
+                        )}
 
                         <div className="md:col-span-1 flex items-center gap-2 pb-1">
                           <input
                             type="checkbox"
                             className="checkbox checkbox-xs checkbox-primary"
-                            checked={row.manual_value || row.manual_attribute}
-                            disabled={row.manual_attribute}
+                            checked={row.manual_value}
+                            disabled={!row.attribute_name}
                             onChange={(e) => updatePurchaseAttributeRow(index, "manual_value", e.target.checked)}
                           />
-                          <span className="text-[10px] font-bold text-gray-500">Manual</span>
+                          <span className="text-[10px] font-bold text-gray-500">New</span>
                         </div>
 
                         <div className="md:col-span-1 flex justify-end">

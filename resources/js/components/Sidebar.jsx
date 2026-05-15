@@ -78,9 +78,9 @@ const outletOverviewMenuBase = [
     icon: "settings",
     route: "business-settings.edit",
     active: "business-settings.edit",
-    category: "Main",
+    category: "Finance",
     permission: null,
-},
+  },
   {
     title: "Outlet Management",
     icon: "store",
@@ -122,7 +122,7 @@ const outletsOverviewExtraMenu = [
 const outletLoggedInMenu = [
   // Main
   { title: "Dashboard", icon: "home", route: "home", active: "home", category: "Main", permission: "dashboard.view" },
-{ title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Main", permission: null },
+
   // Sales
   { title: "Add Sale (Inventory)", icon: "baggage-claim", route: "sales.create", active: "sales.create", category: "Sales", permission: "sales.create" },
   { title: "Add Sale (POS)", icon: "baggage-claim", route: "sales.add", active: "sales.add", category: "Sales", permission: "sales.create" },
@@ -158,6 +158,7 @@ const outletLoggedInMenu = [
   // Finance
   { title: "Expense Category", icon: "banknote-arrow-up", route: "expenses.category", active: "expenses.category", category: "Finance", permission: "expense.category_view" },
   { title: "Expense", icon: "wallet-minimal", route: "expenses.list", active: "expenses.list", category: "Finance", permission: "expense.view" },
+  { title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Finance", permission: null },
   { title: "Accounts", icon: "dollar-sign", route: "accounts.index", active: "accounts.index", category: "Finance", permission: "accounts.view" },
   { title: "Ledgers", icon: "box", route: "ledgers.index", active: "ledgers.index", category: "Finance", permission: "ledger.view" },
 
@@ -196,14 +197,14 @@ const outletLoggedInMenu = [
   { title: "Employees", icon: "users", route: "employees.index", active: "employees.index", category: "HR", permission: "employees.view" },
   { title: "Attendance", icon: "calendar", route: "attendance.index", active: "attendance.index", category: "HR", permission: "attendance.view" },
   { title: "Salary", icon: "credit-card", route: "salary.index", active: "salary.index", category: "HR", permission: "salary.view" },
-  { 
-  title: "Salary Advance",
-  icon: "wallet-minimal",
-  route: "employee-salary-advances.index",
-  active: "employee-salary-advances.index",
-  category: "HR",
-  permission: "salary.view"
-},
+  {
+    title: "Salary Advance",
+    icon: "wallet-minimal",
+    route: "employee-salary-advances.index",
+    active: "employee-salary-advances.index",
+    category: "HR",
+    permission: "salary.view"
+  },
   { title: "Allowances", icon: "trending-up", route: "allowances.index", active: "allowances.index", category: "HR", permission: "allowances.view" },
   { title: "Ranks", icon: "star", route: "ranks.index", active: "ranks.index", category: "HR", permission: "ranks.view" },
   { title: "Bonus", icon: "gift", route: "bonus.index", active: "bonus.index", category: "HR", permission: "bonus.view" },
@@ -219,15 +220,16 @@ const outletLoggedInMenu = [
   { title: "System Setting", icon: "user", route: "system.index", active: "system.index", category: "System", permission: "system.index" },
 
   // Outlets (super admin will see even inside outlet)
-  { title: "Outlet", icon: "store", route: "outlets.index", active: "outlets.index", category: "Outlets", permission: "outlets.view" },
+  // { title: "Outlet", icon: "store", route: "outlets.index", active: "outlets.index", category: "Outlets", permission: "outlets.view" },
 ];
 
 const superAdminMenu = [
   // Main
   { title: "Dashboard", icon: "home", route: "home", active: "home", category: "Main", permission: "dashboard.view" },
 
-  { title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Main", permission: null },
-    // Subscriptions
+  // Finance
+  { title: "Business Settings", icon: "settings", route: "business-settings.edit", active: "business-settings.edit", category: "Finance", permission: null },
+
   // Subscriptions
   { title: "Plan", icon: "barcode", route: "plans.index", active: "plans.index", category: "Subscriptions", permission: "plans.view" },
   // { title: "Plan Modules", icon: "barcode", route: "modules.index", active: "modules.index", category: "Subscriptions", permission: "modules.view" },
@@ -315,8 +317,16 @@ export default function Sidebar({ status, setStatus }) {
     auth?.user?.role?.name === "Super Admin" ||
     (Array.isArray(auth?.user?.roles) && auth.user.roles.includes("Super Admin"));
 
-  const isLoggedIntoOutlet = !!auth?.user?.is_logged_into_outlet;
-  const isOutletUser = !!auth?.user?.outlet_id;
+  const isLoggedIntoOutlet =
+    !!auth?.user?.is_logged_into_outlet ||
+    !!auth?.user?.current_outlet_id ||
+    !!auth?.user?.current_outlet ||
+    !!auth?.user?.outlet_logged_in_at;
+
+  const isOutletUser =
+    !!auth?.user?.outlet_id ||
+    !!auth?.user?.current_outlet_id ||
+    !!auth?.user?.current_outlet;
 
   // ✅ superadmin: ignore permission checks
   const can = (perm) => {
@@ -373,6 +383,9 @@ export default function Sidebar({ status, setStatus }) {
       Investments: t("auth.investments", "Investments"),
       "Add Investment": t("auth.add_investment", "Add Investment"),
       "Investment Returns": t("auth.investment_returns", "Investment Returns"),
+      Borrowers: t("auth.borrowers", "Borrowers"),
+      Loans: t("auth.loans", "Loans"),
+      "Loan Repayments": t("auth.loan_repayments", "Loan Repayments"),
 
       // Finance
       "Expense Category": t("auth.expense_category", "Expense Category"),
@@ -381,7 +394,20 @@ export default function Sidebar({ status, setStatus }) {
       Accounts: t("auth.accounts", "Accounts"),
       Ledgers: t("auth.ledgers", "Ledgers"),
 
-      //Reports
+      // Reports
+      "All Sales Reports ": t("auth.all_sales_reports", "All Sales Reports"),
+      "All Purchase Reports": t("auth.all_purchase_reports", "All Purchase Reports"),
+      "All SalesItems Reports": t("auth.all_sales_items_reports", "All SalesItems Reports"),
+      "All PurchaseItems Reports": t("auth.all_purchase_items_reports", "All PurchaseItems Reports"),
+      "All SalesReturn Reports": t("auth.all_sales_return_reports", "All SalesReturn Reports"),
+      "All PurchaseReturn Reports": t("auth.all_purchase_return_reports", "All PurchaseReturn Reports"),
+      "All Damages Reports": t("auth.all_damages_reports", "All Damages Reports"),
+      "All Customer Reports": t("auth.all_customer_reports", "All Customer Reports"),
+      "All Supplier Reports": t("auth.all_supplier_reports", "All Supplier Reports"),
+      "All Transaction Reports": t("auth.all_transaction_reports", "All Transaction Reports"),
+      "All Account Reports": t("auth.all_account_reports", "All Account Reports"),
+      "All Product Reports": t("auth.all_product_reports", "All Product Reports"),
+      "All Expense Reports": t("auth.all_expense_reports", "All Expense Reports"),
       "Monthly Cost Report": "Monthly Cost Report",
 
       // Subscriptions
@@ -405,6 +431,7 @@ export default function Sidebar({ status, setStatus }) {
       Employees: t("auth.employees", "Employees"),
       Attendance: t("auth.attendance", "Attendance"),
       Salary: t("auth.salary", "Salary"),
+      "Salary Advance": t("auth.salary_advance", "Salary Advance"),
       Allowances: t("auth.allowances", "Allowances"),
       Ranks: t("auth.ranks", "Ranks"),
       Bonus: t("auth.bonus", "Bonus"),
@@ -412,6 +439,10 @@ export default function Sidebar({ status, setStatus }) {
 
       // Outlets
       Outlet: t("auth.outlet", "Outlet"),
+
+      // System
+      "System Setting": t("auth.system_setting", "System Setting"),
+      "Users Deposit": t("auth.users_deposit", "Users Deposit"),
 
       // Categories
       Main: t("auth.category_main", "Main"),
@@ -462,16 +493,13 @@ export default function Sidebar({ status, setStatus }) {
     });
   };
 
-  // ✅ grouping + all hide logic (superadmin bypass)
+  // ✅ grouping + permission logic only
+  // ✅ Outlet login হলে সব menu show হবে
   const groupMenuByCategory = (menuItems) => {
     const categories = {};
 
     menuItems.forEach((item) => {
       if (!isSuperAdmin && !can(item.permission)) return;
-
-      if (!isSuperAdmin && isLoggedIntoOutlet && (item.category === "Admin" || item.category === "Outlets")) return;
-
-      if (!isSuperAdmin && isOutletUser && isLoggedIntoOutlet && item.category === "Investments") return;
 
       const category = item.category || "General";
       categories[category] ||= [];
@@ -498,12 +526,17 @@ export default function Sidebar({ status, setStatus }) {
   const menuToShow = useMemo(() => {
     if (isSuperAdmin) return superAdminMenu;
 
-    if (isLoggedIntoOutlet) return outletLoggedInMenu;
+    // ✅ Outlet login হলে full app menu + investment/loan menu show হবে
+    if (isLoggedIntoOutlet) {
+      return [
+        ...outletLoggedInMenu,
+        ...investmentsOverviewMenu,
+      ];
+    }
 
-    // Overview mode
+    // ✅ Outlet login না থাকলে overview menu
     const base = [...outletOverviewMenuBase];
 
-    // owner/admin (outlet_id নেই) => extra menus
     if (!isOutletUser) {
       base.push(...investmentsOverviewMenu);
       base.push(...adminOverviewMenu);
